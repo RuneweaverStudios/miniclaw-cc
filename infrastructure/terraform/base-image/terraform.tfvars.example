@@ -1,0 +1,63 @@
+################################################################################
+# Terraform Variables Example Configuration
+# Copy this file to terraform.tfvars and fill in your values
+################################################################################
+
+# DigitalOcean API Token (required)
+# Get your token from: https://cloud.digitalocean.com/account/api/tokens
+do_token = "your-digitalocean-api-token-here"
+
+# Environment
+environment = "development"
+
+# Region
+region = "nyc1"
+
+# Droplet Configuration
+droplet_name  = "miniclaw-base"
+droplet_image = "ubuntu-22-04-x64"
+droplet_size  = "s-2vcpu-4gb"
+
+# Enable monitoring and backups
+monitoring      = true
+ipv6            = true
+enable_backups  = true
+
+# SSH Key Configuration
+ssh_key_name          = "miniclaw-deploy-key"
+ssh_public_key_path   = "~/.ssh/id_rsa.pub"
+ssh_private_key_path  = "~/.ssh/id_rsa"
+
+# Firewall Configuration
+create_firewall          = true
+firewall_ssh_sources     = ["0.0.0.0/0"]
+firewall_app_sources     = ["0.0.0.0/0"]
+
+# Snapshot Configuration
+create_snapshot = false
+snapshot_name   = "miniclaw-base-snapshot"
+
+# Floating IP Configuration
+create_floating_ip = false
+
+# Volume Configuration
+create_volume       = false
+volume_name         = "miniclaw-volume"
+volume_size         = 100
+volume_filesystem   = "ext4"
+
+# DNS Configuration
+create_dns_records = false
+domain_name        = ""
+dns_subdomain      = "base"
+dns_ttl            = 300
+
+# Project Configuration
+# Find your project ID at: https://cloud.digitalocean.com/projects/
+project_id = ""
+
+# Application Ports
+openclaw_port = 3000
+nanobot_port  = 8000
+api_port      = 8080
+worker_port   = 9090
