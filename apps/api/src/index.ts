@@ -131,7 +131,7 @@ async function main() {
   startHealthMonitor();
   startReclaimer();
   startInstallWorkers();
-  startPoolSyncWorker();
+  await startPoolSyncWorker();
   console.log('[Workers] Background workers started');
 
   // Start API server

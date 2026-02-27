@@ -69,7 +69,7 @@ async function syncPoolWithDigitalOcean(): Promise<void> {
 /**
  * Start pool sync worker
  */
-export function startPoolSyncWorker(): void {
+export async function startPoolSyncWorker(): Promise<void> {
   console.log("[PoolSync] Starting pool sync worker...");
 
   const worker = createWorker(
