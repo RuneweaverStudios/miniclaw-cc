@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  nanobot-droplet:
+    build:
+      context: .
+      dockerfile: Dockerfile.nanobot
+    container_name: miniclaw-nanobot-test
+    ports:
+      - "2221:22"  # SSH on port 2221
+    networks:
+      - test-net
+
+  openclaw-droplet:
+    build:
+      context: .
+      dockerfile: Dockerfile.openclaw
+    container_name: miniclaw-openclaw-test
+    ports:
+      - "2222:22"  # SSH on port 2222
+    networks:
+      - test-net
+
+networks:
+  test-net:
+    driver: bridge

@@ -21,10 +21,27 @@ export interface BackupJob {
   name: string;
 }
 
+export interface ReclaimJob {
+  dropletId: number;
+  userId: string;
+  ipAddress: string;
+  stack: 'openclaw' | 'nanobot';
+}
+
+export interface InstallJob {
+  dropletId: number;
+  ipAddress: string;
+  stack: 'openclaw' | 'nanobot';
+  version: string;
+}
+
 let provisionQueue: Queue<ProvisionServerJob> | null = null;
 let destroyQueue: Queue<DestroyServerJob> | null = null;
 let healthCheckQueue: Queue<HealthCheckJob> | null = null;
 let backupQueue: Queue<BackupJob> | null = null;
+let reclaimQueue: Queue<ReclaimJob> | null = null;
+let installOpenClawQueue: Queue<InstallJob> | null = null;
+let installNanobotQueue: Queue<InstallJob> | null = null;
 
 export function getProvisionQueue(): Queue<ProvisionServerJob> {
   if (!provisionQueue) {
@@ -114,17 +131,89 @@ export function getBackupQueue(): Queue<BackupJob> {
   return backupQueue;
 }
 
+export function getReclaimQueue(): Queue<ReclaimJob> {
+  if (!reclaimQueue) {
+    reclaimQueue = new Queue<ReclaimJob>('reclaims', {
+      connection: getRedis(),
+      defaultJobOptions: {
+        attempts: 2,
+        backoff: {
+          type: 'exponential',
+          delay: 10000,
+        },
+        removeOnComplete: {
+          count: 100,
+        },
+        removeOnFail: {
+          count: 500,
+        },
+      },
+    });
+  }
+  return reclaimQueue;
+}
+
+export function getInstallOpenClawQueue(): Queue<InstallJob> {
+  if (!installOpenClawQueue) {
+    installOpenClawQueue = new Queue<InstallJob>('install-openclaw', {
+      connection: getRedis(),
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 5000,
+        },
+        removeOnComplete: {
+          count: 100,
+        },
+        removeOnFail: {
+          count: 500,
+        },
+      },
+    });
+  }
+  return installOpenClawQueue;
+}
+
+export function getInstallNanobotQueue(): Queue<InstallJob> {
+  if (!installNanobotQueue) {
+    installNanobotQueue = new Queue<InstallJob>('install-nanobot', {
+      connection: getRedis(),
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 5000,
+        },
+        removeOnComplete: {
+          count: 100,
+        },
+        removeOnFail: {
+          count: 500,
+        },
+      },
+    });
+  }
+  return installNanobotQueue;
+}
+
 export async function closeQueues(): Promise<void> {
   await Promise.all([
     provisionQueue?.close(),
     destroyQueue?.close(),
     healthCheckQueue?.close(),
     backupQueue?.close(),
+    reclaimQueue?.close(),
+    installOpenClawQueue?.close(),
+    installNanobotQueue?.close(),
   ]);
   provisionQueue = null;
   destroyQueue = null;
   healthCheckQueue = null;
   backupQueue = null;
+  reclaimQueue = null;
+  installOpenClawQueue = null;
+  installNanobotQueue = null;
 }
 
 export function createWorker<T>(
@@ -132,13 +221,24 @@ export function createWorker<T>(
   processor: (job: T) => Promise<void>,
   options: { concurrency?: number } = {}
 ): Worker {
+  const redis = getRedis();
+
+  // Convert Redis client to connection options for BullMQ
+  const connection = {
+    host: redis.options.host || 'localhost',
+    port: redis.options.port || 6379,
+    db: redis.options.db || 0,
+    password: redis.options.password,
+    maxRetriesPerRequest: null, // Fix for BullMQ requirement
+  };
+
   return new Worker(
     queueName,
     async (job) => {
       await processor(job.data as T);
     },
     {
-      connection: getRedis(),
+      connection,
       concurrency: options.concurrency || 1,
     }
   );

@@ -2,6 +2,11 @@
  * Nanobot Service - Installation and management
  *
  * Nanobot is a Python-based AI agent framework installed via pip
+ * Docs: https://github.com/HKUDS/nanobot
+ *
+ * Version: 0.1.3.post4 (PyPI stable version, avoids oauth-cli-kit dependency)
+ * Config: ~/.nanobot/config.json (JSON format)
+ * Gateway: nanobot gateway
  */
 
 import { NodeSSH } from "node-ssh";
@@ -9,40 +14,36 @@ import type { PoolServerConfig } from "@miniclaw/shared";
 
 export interface NanobotInstallOptions {
   ipAddress: string;
-  version: string;
+  version?: string;
   config?: Record<string, unknown>;
 }
 
 export interface NanobotInstallResult {
   success: boolean;
   error?: string;
-  port: number;
-  adminUrl: string;
-  venvPath: string;
+  gatewayRunning: boolean;
 }
 
 /**
  * Nanobot service class
  */
 export class NanobotService {
-  private defaultPort = 3000;
-  private venvPath = "/opt/nanobot";
-  private configPath = "/etc/nanobot";
+  private readonly defaultVersion = "0.1.3.post7"; // PyPI stable version (avoids oauth-cli-kit)
+  private readonly configPath = "/root/.nanobot/config.json";
+  private readonly workspacePath = "/root/.nanobot/workspace";
 
   /**
    * Install Nanobot on a server
    */
   async install(options: NanobotInstallOptions): Promise<NanobotInstallResult> {
-    const { ipAddress, version, config = {} } = options;
-    const sshKey = process.env.SSH_PRIVATE_KEY;
+    const { ipAddress, version = this.defaultVersion, config = {} } = options;
+    const sshKey = process.env.SSH_PRIVATE_KEY || process.env.SSH_PRIVATE_KEY_PATH;
 
     if (!sshKey) {
       return {
         success: false,
         error: "SSH key not configured",
-        port: this.defaultPort,
-        adminUrl: "",
-        venvPath: this.venvPath,
+        gatewayRunning: false,
       };
     }
 
@@ -52,126 +53,125 @@ export class NanobotService {
       // Wait for SSH
       await this.waitForSSH(ipAddress);
 
+      // Load SSH key from file if needed
+      let privateKey = sshKey;
+      if (process.env.SSH_PRIVATE_KEY_PATH) {
+        const fs = await import('fs');
+        privateKey = fs.readFileSync(process.env.SSH_PRIVATE_KEY_PATH, 'utf8');
+      }
+
       // Connect
       await ssh.connect({
         host: ipAddress,
         username: "root",
-        privateKey: sshKey,
+        privateKey,
         readyTimeout: 30000,
       });
 
-      // Wait for cloud-init
-      await ssh.execCommand("cloud-init status --wait");
+      // Wait for cloud-init to complete
+      console.log(`[Nanobot] Waiting for cloud-init on ${ipAddress}...`);
+      await this.waitForCloudInit(ssh);
 
-      // Install Nanobot using pip
+      // Install Nanobot
       console.log(`[Nanobot] Installing v${version} on ${ipAddress}`);
 
       const installScript = `
-        set -euo pipefail
+set -e
 
-        # Install Python and dependencies
-        apt-get update
-        apt-get install -y python3 python3-pip python3-venv python3-dev git
+export DEBIAN_FRONTEND=noninteractive
 
-        # Create virtual environment
-        python3 -m venv ${this.venvPath}
-        source ${this.venvPath}/bin/activate
+echo "[Nanobot] Installing system dependencies..."
+apt-get update -qq
 
-        # Install Nanobot
-        if [ "${version}" = "latest" ]; then
-          pip install nanobot-ai
-        else
-          pip install nanobot-ai==${version}
-        fi
+# Add deadsnakes PPA for Python 3.11
+echo "[Nanobot] Adding deadsnakes PPA for Python 3.11..."
+apt-get install -y -qq software-properties-common
+add-apt-repository ppa:deadsnakes/ppa -y
+apt-get update -qq
 
-        # Create config directory
-        mkdir -p ${this.configPath}
+# Install Python 3.11 and pip
+echo "[Nanobot] Installing Python 3.11..."
+apt-get install -y -qq python3.11 python3.11-venv python3-pip python3-dev curl git
 
-        # Generate configuration
-        ${this.generateConfig(config)}
+echo "[Nanobot] Installing Nanobot from PyPI (v${version})..."
+# Use PyPI version to avoid oauth-cli-kit dependency
+# Ignore installed typing_extensions to avoid debian package conflicts
+pip3 install nanobot-ai==${version} --break-system-packages --ignore-installed typing_extensions
 
-        # Create systemd service
-        cat > /etc/systemd/system/nanobot.service << 'EOF'
-        [Unit]
-        Description=Nanobot AI Agent
-        After=network-online.target
-        Wants=network-online.target
+# Verify installation
+echo "[Nanobot] Verifying installation..."
+nanobot --version
 
-        [Service]
-        Type=simple
-        User=root
-        WorkingDirectory=${this.venvPath}
-        Environment="PATH=${this.venvPath}/bin:/usr/local/bin:/usr/bin:/bin"
-        Environment="NANOBOT_HOME=${this.configPath}"
-        ExecStart=${this.venvPath}/bin/nanobot start --config ${this.configPath}/config.yaml
-        Restart=always
-        RestartSec=10
-        StandardOutput=journal
-        StandardError=journal
+echo "[Nanobot] Initializing configuration..."
+# Create initial config and workspace
+yes "" | nanobot onboard || true
 
-        [Install]
-        WantedBy=multi-user.target
-        EOF
+echo "[Nanobot] Creating systemd service..."
+# Create systemd service for gateway
+cat > /etc/systemd/system/nanobot-gateway.service << 'EOF'
+[Unit]
+Description=Nanobot Gateway
+After=network-online.target
+Wants=network-online.target
 
-        systemctl daemon-reload
-        systemctl enable nanobot
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root
+ExecStart=/usr/local/bin/nanobot gateway
+Restart=always
+RestartSec=10
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
 
-        # Start Nanobot
-        systemctl start nanobot
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/root/.nanobot
+ReadWritePaths=/tmp
 
-        # Wait for health check
-        echo "Waiting for Nanobot to start..."
-        for i in {1..60}; do
-          if ${this.venvPath}/bin/nanobot health-check 2>/dev/null; then
-            echo "Nanobot is healthy!"
-            break
-          fi
-          # Try HTTP health endpoint
-          if curl -sf http://localhost:${this.defaultPort}/health > /dev/null 2>&1; then
-            echo "Nanobot HTTP health check passed!"
-            break
-          fi
-          echo "Waiting... ($i/60)"
-          sleep 2
-        done
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nanobot-gateway
 
-        echo "Nanobot installation complete"
-      `;
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable nanobot-gateway
+
+echo "[Nanobot] Installation complete!"
+`;
 
       const result = await ssh.execCommand(installScript, {
         execOptions: { cwd: "/root" },
       });
 
       if (result.code !== 0) {
+        console.error(`[Nanobot] Installation failed:`, result.stderr);
         return {
           success: false,
           error: result.stderr || "Installation failed",
-          port: this.defaultPort,
-          adminUrl: `http://${ipAddress}:${this.defaultPort}`,
-          venvPath: this.venvPath,
+          gatewayRunning: false,
         };
       }
 
-      // Verify installation
-      const healthResult = await ssh.execCommand(
-        `source ${this.venvPath}/bin/activate && nanobot health-check`
-      );
+      console.log(`[Nanobot] Installation successful on ${ipAddress}`);
 
       return {
-        success: healthResult.code === 0,
-        error: healthResult.code !== 0 ? "Health check failed" : undefined,
-        port: this.defaultPort,
-        adminUrl: `http://${ipAddress}:${this.defaultPort}`,
-        venvPath: this.venvPath,
+        success: true,
+        gatewayRunning: false, // Not started yet, will be started when Telegram is configured
       };
 
     } catch (error) {
+      console.error(`[Nanobot] Installation error:`, error);
       return {
         success: false,
         error: (error as Error).message,
-        port: this.defaultPort,
-        adminUrl: `http://${ipAddress}:${this.defaultPort}`,
-        venvPath: this.venvPath,
+        gatewayRunning: false,
       };
     } finally {
       ssh.dispose();
@@ -179,73 +179,193 @@ export class NanobotService {
   }
 
   /**
-   * Generate Nanobot configuration
+   * Configure Nanobot with model and Telegram
    */
-  private generateConfig(config: Record<string, unknown>): string {
-    // Nanobot uses YAML configuration
-    const yamlLines: string[] = [
-      `cat > ${this.configPath}/config.yaml << 'EOF'`,
-      `# Nanobot Configuration`,
-      `host: 0.0.0.0`,
-      `port: ${this.defaultPort}`,
-      ``,
-    ];
-
-    // Add configuration values
-    for (const [key, value] of Object.entries(config)) {
-      if (typeof value === "string") {
-        yamlLines.push(`${key}: "${value}"`);
-      } else if (typeof value === "boolean") {
-        yamlLines.push(`${key}: ${value}`);
-      } else if (typeof value === "number") {
-        yamlLines.push(`${key}: ${value}`);
-      } else if (Array.isArray(value)) {
-        yamlLines.push(`${key}:`);
-        for (const item of value) {
-          yamlLines.push(`  - ${JSON.stringify(item)}`);
-        }
-      } else {
-        yamlLines.push(`${key}: ${JSON.stringify(value)}`);
-      }
+  async configure(options: {
+    ipAddress: string;
+    model: string;
+    botToken: string;
+  }): Promise<{ success: boolean; error?: string }> {
+    const sshKey = process.env.SSH_PRIVATE_KEY || process.env.SSH_PRIVATE_KEY_PATH;
+    if (!sshKey) {
+      return { success: false, error: "SSH key not configured" };
     }
-
-    yamlLines.push("EOF");
-
-    return yamlLines.join("\n");
-  }
-
-  /**
-   * Verify Nanobot installation
-   */
-  async verify(ipAddress: string): Promise<boolean> {
-    const sshKey = process.env.SSH_PRIVATE_KEY;
-    if (!sshKey) return false;
 
     const ssh = new NodeSSH();
 
     try {
+      // Load SSH key from file if needed
+      let privateKey = sshKey;
+      if (process.env.SSH_PRIVATE_KEY_PATH) {
+        const fs = await import('fs');
+        privateKey = fs.readFileSync(process.env.SSH_PRIVATE_KEY_PATH, 'utf8');
+      }
+
+      await ssh.connect({
+        host: options.ipAddress,
+        username: "root",
+        privateKey,
+        readyTimeout: 30000,
+      });
+
+      // Parse model to extract provider
+      let provider = 'openrouter';
+      let modelName = options.model;
+
+      if (options.model.includes('/')) {
+        const parts = options.model.split('/');
+        provider = parts[0];
+        modelName = parts.slice(1).join('/');
+      }
+
+      // Map providers
+      const providerMap: Record<string, string> = {
+        'openrouter': 'openrouter',
+        'anthropic': 'anthropic',
+        'openai': 'openai',
+        'minimax': 'minimax',
+        'deepseek': 'deepseek',
+        'groq': 'groq',
+      };
+
+      const nanobotProvider = providerMap[provider] || 'openrouter';
+
+      // Build configuration
+      const configScript = `
+#!/bin/bash
+set -e
+
+echo "[Nanobot] Configuring model '${options.model}' and Telegram..."
+
+# Read existing config if exists
+if [ -f /root/.nanobot/config.json ]; then
+  CONFIG=$(cat /root/.nanobot/config.json)
+else
+  CONFIG='{}'
+fi
+
+# Update config with jq
+# Install jq if needed
+if ! command -v jq &> /dev/null; then
+  apt-get install -y -qq jq
+fi
+
+# Configure provider
+echo "[Nanobot] Configuring ${nanobotProvider} provider..."
+CONFIG=$(echo "$CONFIG" | jq \\
+  --arg api_key "${process.env.OPENROUTER_API_KEY || ''}" \\
+  '.providers.openrouter = { apiKey: $api_key }')
+
+# Configure default agent
+echo "[Nanobot] Setting model: ${modelName}..."
+CONFIG=$(echo "$CONFIG" | jq \\
+  --arg model "${modelName}" \\
+  --arg provider "${nanobotProvider}" \\
+  '.agents.defaults.model = $model | .agents.defaults.provider = $provider')
+
+# Configure Telegram
+echo "[Nanobot] Configuring Telegram channel..."
+CONFIG=$(echo "$CONFIG" | jq \\
+  --arg token "${options.botToken}" \\
+  '.channels.telegram = { enabled: true, token: $token, allowFrom: [] }')
+
+# Write config
+echo "$CONFIG" > /root/.nanobot/config.json
+echo "[Nanobot] Config written with ${nanobotProvider}/${modelName} and Telegram"
+
+# Restart gateway
+echo "[Nanobot] Restarting gateway..."
+pkill -f "nanobot gateway" || true
+sleep 2
+nohup nanobot gateway > /tmp/nanobot-gateway.log 2>&1 &
+sleep 3
+
+# Verify
+if pgrep -f "nanobot gateway" > /dev/null; then
+  echo "[Nanobot] Gateway restarted successfully"
+else
+  echo "[Nanobot] ERROR: Gateway not running"
+  tail -20 /tmp/nanobot-gateway.log
+  exit 1
+fi
+
+echo "[Nanobot] Configuration complete!"
+`;
+
+      const result = await ssh.execCommand(configScript);
+
+      if (result.code !== 0) {
+        console.error(`[Nanobot] Configuration failed:`, result.stderr);
+        return {
+          success: false,
+          error: result.stderr || "Configuration failed",
+        };
+      }
+
+      console.log(`[Nanobot] Configuration successful on ${options.ipAddress}`);
+      return { success: true };
+
+    } catch (error) {
+      console.error(`[Nanobot] Configuration error:`, error);
+      return {
+        success: false,
+        error: (error as Error).message,
+      };
+    } finally {
+      ssh.dispose();
+    }
+  }
+
+  /**
+   * Verify Nanobot installation and gateway status
+   */
+  async verify(ipAddress: string): Promise<{
+    installed: boolean;
+    gatewayRunning: boolean;
+    version?: string;
+  }> {
+    const sshKey = process.env.SSH_PRIVATE_KEY || process.env.SSH_PRIVATE_KEY_PATH;
+    if (!sshKey) return { installed: false, gatewayRunning: false };
+
+    const ssh = new NodeSSH();
+
+    try {
+      // Load SSH key from file if needed
+      let privateKey = sshKey;
+      if (process.env.SSH_PRIVATE_KEY_PATH) {
+        const fs = await import('fs');
+        privateKey = fs.readFileSync(process.env.SSH_PRIVATE_KEY_PATH, 'utf8');
+      }
+
       await ssh.connect({
         host: ipAddress,
         username: "root",
-        privateKey: sshKey,
+        privateKey,
         readyTimeout: 10000,
       });
 
-      // Try health check via CLI first
-      const cliResult = await ssh.execCommand(
-        `source ${this.venvPath}/bin/activate && nanobot health-check`
+      // Check if nanobot command exists
+      const whichResult = await ssh.execCommand("which nanobot");
+      const installed = whichResult.code === 0;
+
+      if (!installed) {
+        return { installed: false, gatewayRunning: false };
+      }
+
+      // Get version
+      const versionResult = await ssh.execCommand(
+        "pip3 show nanobot-ai 2>/dev/null | grep Version | cut -d' ' -f2"
       );
+      const version = versionResult.stdout.trim() || undefined;
 
-      if (cliResult.code === 0) return true;
+      // Check if gateway is running
+      const gatewayResult = await ssh.execCommand("pgrep -f 'nanobot gateway'");
+      const gatewayRunning = gatewayResult.code === 0;
 
-      // Fall back to HTTP check
-      const httpResult = await ssh.execCommand(
-        `curl -sf http://localhost:${this.defaultPort}/health`
-      );
+      return { installed: true, gatewayRunning, version };
 
-      return httpResult.code === 0;
     } catch {
-      return false;
+      return { installed: false, gatewayRunning: false };
     } finally {
       ssh.dispose();
     }
@@ -257,36 +377,46 @@ export class NanobotService {
   async getStatus(ipAddress: string): Promise<{
     running: boolean;
     version?: string;
-    uptime?: number;
+    configExists: boolean;
   }> {
-    const sshKey = process.env.SSH_PRIVATE_KEY;
-    if (!sshKey) return { running: false };
+    const sshKey = process.env.SSH_PRIVATE_KEY || process.env.SSH_PRIVATE_KEY_PATH;
+    if (!sshKey) return { running: false, configExists: false };
 
     const ssh = new NodeSSH();
 
     try {
+      // Load SSH key from file if needed
+      let privateKey = sshKey;
+      if (process.env.SSH_PRIVATE_KEY_PATH) {
+        const fs = await import('fs');
+        privateKey = fs.readFileSync(process.env.SSH_PRIVATE_KEY_PATH, 'utf8');
+      }
+
       await ssh.connect({
         host: ipAddress,
         username: "root",
-        privateKey: sshKey,
+        privateKey,
         readyTimeout: 10000,
       });
 
-      const serviceResult = await ssh.execCommand("systemctl is-active nanobot");
-      const running = serviceResult.stdout.trim() === "active";
+      // Check if gateway is running
+      const gatewayResult = await ssh.execCommand("pgrep -f 'nanobot gateway'");
+      const running = gatewayResult.code === 0;
 
-      if (!running) return { running: false };
+      // Check if config exists
+      const configResult = await ssh.execCommand("test -f /root/.nanobot/config.json && echo 'exists'");
+      const configExists = configResult.stdout.trim() === 'exists';
 
-      // Get version via pip
+      // Get version
       const versionResult = await ssh.execCommand(
-        `source ${this.venvPath}/bin/activate && pip show nanobot-ai | grep Version | cut -d' ' -f2`
+        "pip3 show nanobot-ai 2>/dev/null | grep Version | cut -d' ' -f2"
       );
+      const version = versionResult.stdout.trim() || undefined;
 
-      const version = versionResult.stdout.trim() || "unknown";
+      return { running, version, configExists };
 
-      return { running, version };
     } catch {
-      return { running: false };
+      return { running: false, configExists: false };
     } finally {
       ssh.dispose();
     }
@@ -295,28 +425,52 @@ export class NanobotService {
   /**
    * Wait for SSH to be available
    */
-  private async waitForSSH(ipAddress: string, maxAttempts = 30): Promise<void> {
-    const sshKey = process.env.SSH_PRIVATE_KEY;
+  private async waitForSSH(ipAddress: string, maxAttempts = 60): Promise<void> {
+    const sshKey = process.env.SSH_PRIVATE_KEY || process.env.SSH_PRIVATE_KEY_PATH;
     if (!sshKey) throw new Error("SSH key not configured");
 
     const ssh = new NodeSSH();
 
     for (let i = 0; i < maxAttempts; i++) {
       try {
+        let privateKey = sshKey;
+        if (process.env.SSH_PRIVATE_KEY_PATH) {
+          const fs = await import('fs');
+          privateKey = fs.readFileSync(process.env.SSH_PRIVATE_KEY_PATH, 'utf8');
+        }
+
         await ssh.connect({
           host: ipAddress,
           username: "root",
-          privateKey: sshKey,
+          privateKey,
           readyTimeout: 5000,
         });
         ssh.dispose();
+        console.log(`[Nanobot] SSH available for ${ipAddress} (attempt ${i + 1}/${maxAttempts})`);
         return;
       } catch {
+        console.log(`[Nanobot] Waiting for SSH on ${ipAddress}... (${i + 1}/${maxAttempts})`);
         await new Promise((resolve) => setTimeout(resolve, 5000));
       }
     }
 
     throw new Error(`SSH did not become available for ${ipAddress}`);
+  }
+
+  /**
+   * Wait for cloud-init to complete
+   */
+  private async waitForCloudInit(ssh: NodeSSH, maxAttempts = 40): Promise<void> {
+    for (let i = 0; i < maxAttempts; i++) {
+      const result = await ssh.execCommand("cloud-init status --wait 2>&1");
+      if (result.stdout.includes('done') || result.stdout.includes('status: done')) {
+        console.log('[Nanobot] cloud-init completed');
+        return;
+      }
+      console.log(`[Nanobot] Waiting for cloud-init... (${i + 1}/${maxAttempts})`);
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+    console.log('[Nanobot] cloud-init wait timeout, continuing...');
   }
 }
 

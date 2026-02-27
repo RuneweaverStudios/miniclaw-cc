@@ -5,12 +5,12 @@
  */
 
 import { Redis } from "ioredis";
+import { redis } from "../lib/redis.js";
 import type { PoolServerConfig, PoolState, PoolMetrics, StackType, HealthStatus } from "@miniclaw/shared";
 import { getPoolConfig, generatePoolServerName, REPLENISHMENT_SETTINGS } from "@miniclaw/config";
 import { provisionDroplet, destroyDroplet } from "./provisioner.js";
 import { allocator } from "./allocator.js";
 import { healthChecker } from "./health-check.js";
-import { redis } from "../lib/redis.js";
 
 /**
  * Pool Manager Class
@@ -19,8 +19,8 @@ export class PoolManager {
   private redis: Redis;
   private config: ReturnType<typeof getPoolConfig>;
 
-  constructor(redis?: Redis) {
-    this.redis = redis || require("../lib/redis.js").redis;
+  constructor(redisInstance?: Redis) {
+    this.redis = redisInstance || redis;
     this.config = getPoolConfig(process.env.NODE_ENV || "production");
   }
 
@@ -314,10 +314,11 @@ export class PoolManager {
    * Queue installation job for a server
    */
   private async queueInstallJob(server: PoolServerConfig): Promise<void> {
-    const { queue } = require("../lib/queue.js");
+    const { getInstallOpenClawQueue, getInstallNanobotQueue } = await import("../lib/queue.js");
+
+    const queue = server.stack === "openclaw" ? getInstallOpenClawQueue() : getInstallNanobotQueue();
 
     await queue.add(
-      server.stack === "openclaw" ? "install-openclaw" : "install-nanobot",
       {
         dropletId: server.dropletId,
         ipAddress: server.ipAddress,
@@ -326,8 +327,6 @@ export class PoolManager {
       },
       {
         jobId: `install-${server.dropletId}`,
-        attempts: 3,
-        backoff: { type: "exponential", delay: 5000 },
       }
     );
   }

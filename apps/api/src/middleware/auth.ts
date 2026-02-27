@@ -1,5 +1,5 @@
 import { Context, Next } from 'hono';
-import { verify } from 'jsonwebtoken';
+import jwt from 'jsonwebtoken';
 
 export interface JWTPayload {
   userId: string;
@@ -34,7 +34,7 @@ export async function authMiddleware(c: Context, next: Next) {
       throw new Error('JWT_SECRET is not configured');
     }
 
-    const payload = verify(token, secret) as JWTPayload;
+    const payload = jwt.verify(token, secret) as JWTPayload;
 
     if (!payload.userId || !payload.email) {
       throw new Error('Invalid token payload');

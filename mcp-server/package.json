@@ -1,0 +1,23 @@
+{
+  "name": "@miniclaw/mcp-server",
+  "version": "1.0.0",
+  "description": "Code Mode MCP server for MiniClaw-CC API",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "generate-spec": "node scripts/generate-spec.js"
+  },
+  "keywords": ["mcp", "model-context-protocol", "miniclaw"],
+  "author": "",
+  "license": "MIT",
+  "packageManager": "pnpm@10.30.1",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "hono": "^4.12.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

@@ -16,11 +16,25 @@ export class SSHClient {
   }
 
   async connect(config: SSHConfig): Promise<void> {
+    // Load SSH key from file if not provided directly
+    let privateKey = config.privateKey;
+
+    if (!privateKey && process.env.SSH_PRIVATE_KEY) {
+      privateKey = process.env.SSH_PRIVATE_KEY;
+    } else if (!privateKey && process.env.SSH_PRIVATE_KEY_PATH) {
+      try {
+        const fs = await import('fs');
+        privateKey = fs.readFileSync(process.env.SSH_PRIVATE_KEY_PATH, 'utf8');
+      } catch (err) {
+        console.error('[SSH] Failed to read SSH key from file:', err);
+      }
+    }
+
     await this.ssh.connect({
       host: config.host,
       port: config.port || 22,
       username: config.username || 'root',
-      privateKey: config.privateKey || process.env.SSH_PRIVATE_KEY,
+      privateKey,
       password: config.password,
       readyTimeout: 30000,
     });

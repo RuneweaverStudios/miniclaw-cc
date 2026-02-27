@@ -4,7 +4,7 @@ import { serversApi } from '@/lib/api';
 import {
   ArrowLeft,
   Play,
-  Stop,
+  Square,
   RotateCcw,
   Trash2,
   Activity,
@@ -134,7 +134,7 @@ export function ServerDetail() {
                     onClick={() => handleAction('stop')}
                     className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-yellow-600 hover:bg-yellow-700"
                   >
-                    <Stop className="h-4 w-4 mr-2" />
+                    <Square className="h-4 w-4 mr-2" />
                     Stop
                   </button>
                   <button

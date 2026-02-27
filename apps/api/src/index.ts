@@ -4,6 +4,7 @@
  * Main application entry point that wires together all components
  */
 
+import 'dotenv/config';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { prettyJSON } from 'hono/pretty-json';
@@ -13,11 +14,15 @@ import { redis } from './lib/redis.js';
 import { startReplenisher } from './workers/replenisher.js';
 import { startHealthMonitor } from './workers/health-monitor.js';
 import { startReclaimer } from './workers/reclaimer.js';
+import { startInstallWorkers } from './workers/install.js';
 import { authRoutes } from './routes/auth.js';
 import { poolRoutes } from './routes/pool.js';
 import { serversRoutes } from './routes/servers.js';
+import { allocateRoutes } from './routes/servers-allocate.js';
 import { billingRoutes } from './routes/billing.js';
 import { webhookRoutes } from './routes/webhooks.js';
+import { stacksRoutes } from './routes/stacks.js';
+import adminReadyPoolRoutes from './routes/admin-ready-pool.js';
 
 const app = new Hono();
 
@@ -25,7 +30,7 @@ const app = new Hono();
 app.use('*', logger());
 app.use('*', prettyJSON());
 app.use('*', cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000'],
+  origin: ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002'],
   credentials: true,
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
@@ -64,10 +69,13 @@ app.get('/health', async (c) => {
 
 // API routes
 app.route('/api/auth', authRoutes);
+app.route('/api/stacks', stacksRoutes);
 app.route('/api/pool', poolRoutes);
 app.route('/api/servers', serversRoutes);
+app.route('/api/servers', allocateRoutes);
 app.route('/api/billing', billingRoutes);
 app.route('/api/webhooks', webhookRoutes);
+app.route('/api/admin', adminReadyPoolRoutes);
 
 // Error handling
 app.onError((err, c) => {
@@ -121,6 +129,7 @@ async function main() {
   startReplenisher();
   startHealthMonitor();
   startReclaimer();
+  startInstallWorkers();
   console.log('[Workers] Background workers started');
 
   // Start API server

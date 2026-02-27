@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 
 export function Dashboard() {
-  const { data: servers } = useQuery({
+  const { data: serversData } = useQuery({
     queryKey: ['servers'],
     queryFn: serversApi.list,
   });
@@ -26,10 +26,13 @@ export function Dashboard() {
     queryFn: () => billingApi.getUsage('current'),
   });
 
+  // Handle different response formats
+  const servers = Array.isArray(serversData) ? serversData : (serversData as any)?.data || [];
+
   const stats = [
     {
       name: 'Active Servers',
-      value: servers?.filter((s) => s.status === 'running').length || 0,
+      value: servers.filter((s) => s.status === 'running').length,
       icon: Server,
       color: 'bg-blue-500',
       link: '/servers',
@@ -43,21 +46,21 @@ export function Dashboard() {
     },
     {
       name: 'This Month',
-      value: `$${usage?.totalCost.toFixed(2) || '0.00'}`,
+      value: `$${(usage?.totalCost || 0).toFixed(2)}`,
       icon: DollarSign,
       color: 'bg-yellow-500',
       link: '/settings/billing',
     },
     {
       name: 'Total Compute Hours',
-      value: usage?.computeHours.toFixed(1) || '0',
+      value: (usage?.computeHours || 0).toFixed(1),
       icon: TrendingUp,
       color: 'bg-purple-500',
       link: '/settings/billing',
     },
   ];
 
-  const recentServers = servers?.slice(0, 5) || [];
+  const recentServers = servers.slice(0, 5);
 
   return (
     <div className="min-h-screen bg-gray-50">

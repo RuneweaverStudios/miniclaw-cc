@@ -5,14 +5,21 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:force": "vite --force",
+    "dev:debug": "vite --debug",
     "build": "tsc && vite build",
+    "build:analyze": "vite build --mode production",
     "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
     "@miniclaw/shared": "workspace:*",
-    "@tanstack/react-query": "^5.62.11",
+    "@supabase/auth-helpers-react": "^0.15.0",
+    "@supabase/auth-ui-react": "^0.4.7",
+    "@supabase/supabase-js": "^2.98.0",
     "@tailwindcss/vite": "^4.1.3",
+    "@tanstack/react-query": "^5.62.11",
     "clsx": "^2.1.1",
     "lucide-react": "^0.469.0",
     "react": "^19.1.0",
@@ -23,6 +30,7 @@
     "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@modelcontextprotocol/server-filesystem": "^2026.1.14",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-react": "^4.3.4",

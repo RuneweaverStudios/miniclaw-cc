@@ -188,9 +188,9 @@ export class Allocator {
     console.log(`[Allocator] Releasing server ${dropletId}`);
 
     // Queue reclamation job
-    const { queue } = require("../lib/queue.js");
+    const { getReclaimQueue } = await import("../lib/queue.js");
+    const queue = getReclaimQueue();
     await queue.add(
-      "reclaim",
       {
         dropletId,
         userId: server.allocatedTo,
@@ -199,7 +199,6 @@ export class Allocator {
       },
       {
         jobId: `reclaim-${dropletId}`,
-        attempts: 2,
       }
     );
 

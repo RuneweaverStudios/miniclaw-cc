@@ -22,7 +22,9 @@
     "rootDir": "./src",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@miniclaw/shared": ["../../packages/shared/src"],
+      "@miniclaw/config": ["../../packages/config/src"]
     }
   },
   "include": ["src/**/*"],

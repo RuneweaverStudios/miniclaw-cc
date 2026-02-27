@@ -1,0 +1,27 @@
+FROM python:3.11-slim
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    openssh-server \
+    sudo \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Nanobot
+RUN pip install nanobot-ai
+
+# Create config directory
+RUN mkdir -p /root/.nanobot
+
+# Setup SSH for root access
+RUN mkdir -p /root/.ssh && \
+    chmod 700 /root/.ssh && \
+    echo 'root:testpass123' | chpasswd && \
+    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+# Expose SSH
+EXPOSE 22
+
+# Start SSH server
+CMD ["/usr/sbin/sshd", "-D", "-e"]

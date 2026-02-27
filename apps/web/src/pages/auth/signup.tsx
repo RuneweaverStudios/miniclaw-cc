@@ -1,185 +1,192 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { authApi, stacksApi, type Stack } from '@/lib/api';
+import { useEffect, useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { User } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabase';
 
 export function Signup() {
   const navigate = useNavigate();
-  const [step, setStep] = useState<'details' | 'stack'>('details');
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-  });
-  const [selectedStack, setSelectedStack] = useState<string | null>(null);
-  const [stacks, setStacks] = useState<Stack[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const loadStacks = async () => {
+  // Check for existing session on load
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        navigate('/dashboard');
+      }
+    });
+
+    // Handle OAuth redirect
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (session) {
+          // User just signed in, sync with our backend
+          await syncUserWithBackend(session.user);
+          navigate('/dashboard');
+        }
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  const syncUserWithBackend = async (user: User) => {
     try {
-      const data = await stacksApi.list();
-      setStacks(data);
-      setStep('stack');
+      // Sync user with MiniClaw backend
+      const response = await fetch('/api/auth/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: user.email,
+          name: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
+          avatar: user.user_metadata?.avatar_url,
+          provider: 'google',
+          providerId: user.id,
+        }),
+      });
+
+      if (response.ok) {
+        const { user: syncedUser, token } = await response.json();
+
+        // Store the JWT token for API authentication
+        localStorage.setItem('auth_token', token);
+        localStorage.setItem('user_role', syncedUser.plan || 'free');
+        localStorage.setItem('user_id', syncedUser.id);
+      } else {
+        console.error('Failed to sync user with backend');
+      }
     } catch (err) {
-      setError('Failed to load available stacks');
+      console.error('Error syncing user:', err);
     }
   };
 
-  const handleDetailsSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    await loadStacks();
-  };
-
-  const handleStackSelect = async (stackId: string) => {
-    setSelectedStack(stackId);
+  const handleGoogleSignIn = async () => {
     setLoading(true);
     setError('');
 
     try {
-      await authApi.signup({
-        ...formData,
-        defaultStack: stackId,
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+        },
       });
-      navigate('/dashboard');
+
+      if (error) {
+        setError('Failed to sign in with Google. Please try again.');
+        console.error('OAuth error:', error);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Signup failed');
+      setError('An unexpected error occurred.');
+      console.error('Sign in error:', err);
+    } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Create your account
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Or{' '}
-            <Link
-              to="/login"
-              className="font-medium text-indigo-600 hover:text-indigo-500"
-            >
-              sign in to existing account
-            </Link>
+        {/* Header */}
+        <div className="text-center">
+          <h1 className="text-4xl font-bold text-gray-900">
+            Welcome to MiniClaw
+          </h1>
+          <p className="mt-3 text-lg text-gray-600">
+            Get instant access to pre-provisioned AI agent servers
           </p>
         </div>
 
+        {/* Error Message */}
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
             {error}
           </div>
         )}
 
-        {step === 'details' ? (
-          <form className="mt-8 space-y-6" onSubmit={handleDetailsSubmit}>
-            <div className="rounded-md shadow-sm -space-y-px">
-              <div>
-                <label htmlFor="name" className="sr-only">
-                  Full name
-                </label>
-                <input
-                  id="name"
-                  name="name"
-                  type="text"
-                  required
-                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                  placeholder="Full name"
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                />
-              </div>
-              <div>
-                <label htmlFor="email-address" className="sr-only">
-                  Email address
-                </label>
-                <input
-                  id="email-address"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                  placeholder="Email address"
-                  value={formData.email}
-                  onChange={(e) =>
-                    setFormData({ ...formData, email: e.target.value })
-                  }
-                />
-              </div>
-              <div>
-                <label htmlFor="password" className="sr-only">
-                  Password
-                </label>
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  autoComplete="new-password"
-                  required
-                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                  placeholder="Password"
-                  value={formData.password}
-                  onChange={(e) =>
-                    setFormData({ ...formData, password: e.target.value })
-                  }
-                />
-              </div>
-            </div>
+        {/* Sign In Card */}
+        <div className="bg-white rounded-2xl shadow-xl p-8 space-y-6">
+          <div className="text-center">
+            <h2 className="text-2xl font-semibold text-gray-900">
+              Create your account
+            </h2>
+            <p className="mt-2 text-sm text-gray-600">
+              One-click signup with Google
+            </p>
+          </div>
 
-            <div>
-              <button
-                type="submit"
-                className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              >
-                Continue
-              </button>
+          {/* Google Sign In Button */}
+          <button
+            onClick={handleGoogleSignIn}
+            disabled={loading}
+            className="w-full flex items-center justify-center gap-3 px-6 py-4 border-2 border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed group"
+          >
+            <svg className="w-6 h-6" viewBox="0 0 24 24">
+              <path
+                fill="currentColor"
+                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 2.92v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                className="group-hover:opacity-80"
+              />
+              <path
+                fill="#34A853"
+                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v4.72c2.16 2.97 5.62 4.73 9.82 4.73z"
+                className="group-hover:opacity-80"
+              />
+              <path
+                fill="#FBBC05"
+                d="M3.58 13.5c0-1.07.24-2.15.68-3.15l3.57-2.77c1.35 1.05 2.48 2.92 2.68 4.53h3.57V13.5H3.58z"
+              />
+            </svg>
+            <span className="text-base font-medium text-gray-700">
+              {loading ? 'Signing in...' : 'Continue with Google'}
+            </span>
+          </button>
+
+          {/* Divider */}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-200"></div>
             </div>
-          </form>
-        ) : (
-          <div className="mt-8">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">
-              Choose your default stack
-            </h3>
-            <div className="space-y-4">
-              {stacks.map((stack) => (
-                <button
-                  key={stack.id}
-                  onClick={() => handleStackSelect(stack.id)}
-                  disabled={loading || !stack.available}
-                  className={`w-full text-left p-4 border rounded-lg hover:border-indigo-500 transition-colors ${
-                    !stack.available
-                      ? 'opacity-50 cursor-not-allowed'
-                      : 'cursor-pointer'
-                  }`}
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h4 className="font-medium text-gray-900">
-                        {stack.name}
-                      </h4>
-                      <p className="text-sm text-gray-600 mt-1">
-                        {stack.description}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-2">
-                        {stack.cpu} vCPU, {stack.memory}GB RAM
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-lg font-semibold text-indigo-600">
-                        ${stack.price}/hr
-                      </p>
-                      <p className="text-xs text-gray-500">per instance</p>
-                    </div>
-                  </div>
-                </button>
-              ))}
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-white text-gray-500">
+                Powered by Supabase
+              </span>
             </div>
           </div>
-        )}
+
+          {/* Features */}
+          <div className="grid grid-cols-3 gap-4 pt-4">
+            <div className="text-center">
+              <div className="text-2xl mb-1">⚡</div>
+              <div className="text-xs text-gray-600">Instant Setup</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl mb-1">🔒</div>
+              <div className="text-xs text-gray-600">Secure Auth</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl mb-1">🚀</div>
+              <div className="text-xs text-gray-600">Quick Deploy</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Already have account? */}
+        <p className="text-center text-sm text-gray-600">
+          Already have an account?{' '}
+          <Link
+            to="/login"
+            className="font-medium text-indigo-600 hover:text-indigo-500"
+          >
+            Sign in
+          </Link>
+        </p>
       </div>
     </div>
   );

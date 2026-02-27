@@ -1,6 +1,9 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
+import { eq } from 'drizzle-orm';
+import { getDb } from '../lib/db/index.js';
+import * as auth from '../services/auth.js';
+import { users } from '../db/schema.js';
 
 const authRoutes = new Hono();
 
@@ -14,64 +17,191 @@ const signUpSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   name: z.string().min(2).optional(),
+  stack: z.enum(['openclaw', 'nanobot']).optional(),
 });
 
 // GET /api/auth - Get current user
 authRoutes.get('/', async (c) => {
-  // TODO: Implement getting current user from session/JWT
-  return c.json({
-    user: null,
-    message: 'Not implemented'
-  });
+  const token = c.req.header('Authorization')?.replace('Bearer ', '');
+
+  if (!token) {
+    return c.json({
+      user: null,
+      message: 'No token provided',
+    });
+  }
+
+  try {
+    const payload = auth.verifyToken(token);
+
+    // Get fresh user data from database
+    const db = getDb();
+    const foundUsers = await db.select().from(users).where(eq(users.id, payload.userId)).limit(1);
+
+    if (foundUsers.length === 0) {
+      return c.json({
+        user: null,
+        message: 'User not found',
+      });
+    }
+
+    const user = foundUsers[0];
+
+    return c.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        plan: user.plan,
+        emailVerified: user.emailVerified,
+        avatar: user.avatar,
+        status: user.status,
+      },
+    });
+  } catch (error) {
+    return c.json({
+      user: null,
+      message: 'Invalid token',
+    }, 401);
+  }
 });
 
 // POST /api/auth/signin - Sign in
-authRoutes.post('/signin', zValidator('json', signInSchema), async (c) => {
-  const { email, password } = c.req.valid('json');
+authRoutes.post('/signin', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { email, password } = signInSchema.parse(body);
 
-  // TODO: Implement sign-in logic
-  // - Verify credentials
-  // - Generate JWT
-  // - Return user data and token
+    const db = getDb();
+    const result = await auth.signin({ email, password }, db);
 
-  return c.json({
-    message: 'Sign-in not yet implemented',
-    email,
-  });
+    if (result.success) {
+      return c.json({
+        user: result.user,
+        token: result.token,
+      });
+    }
+
+    return c.json({
+      error: {
+        message: result.error || 'Sign in failed',
+      },
+    }, 401);
+  } catch (error) {
+    return c.json({
+      error: {
+        message: 'Invalid request format',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
+    }, 400);
+  }
 });
 
 // POST /api/auth/signup - Sign up
-authRoutes.post('/signup', zValidator('json', signUpSchema), async (c) => {
-  const { email, password, name } = c.req.valid('json');
+authRoutes.post('/signup', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { email, password, name, stack } = signUpSchema.parse(body);
 
-  // TODO: Implement sign-up logic
-  // - Create user account
-  // - Hash password
-  // - Generate JWT
-  // - Return user data and token
+    const db = getDb();
+    const result = await auth.signup({ email, password, name, stack }, db);
 
-  return c.json({
-    message: 'Sign-up not yet implemented',
-    email,
-    name,
-  });
+    if (result.success) {
+      return c.json({
+        user: result.user,
+        token: result.token,
+        message: 'Account created successfully',
+      });
+    }
+
+    const statusCode = result.error?.includes('already exists') ? 409 : 400;
+
+    return c.json({
+      error: {
+        message: result.error || 'Sign up failed',
+      },
+    }, statusCode);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return c.json({
+        error: {
+          message: 'Invalid input',
+          details: error.errors,
+        },
+      }, 400);
+    }
+
+    return c.json({
+      error: {
+        message: 'Invalid request format',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
+    }, 400);
+  }
 });
 
 // POST /api/auth/signout - Sign out
 authRoutes.post('/signout', async (c) => {
-  // TODO: Implement sign-out logic
-  // - Clear session/token
+  // TODO: Implement token invalidation (blacklist)
   return c.json({
-    message: 'Sign-out not yet implemented',
+    message: 'Signed out successfully',
   });
 });
 
 // POST /api/auth/refresh - Refresh token
 authRoutes.post('/refresh', async (c) => {
-  // TODO: Implement token refresh logic
-  return c.json({
-    message: 'Token refresh not yet implemented',
-  });
+  const token = c.req.header('Authorization')?.replace('Bearer ', '');
+
+  if (!token) {
+    return c.json({
+      error: {
+        message: 'No token provided',
+      },
+    }, 401);
+  }
+
+  try {
+    const payload = auth.verifyToken(token);
+
+    // Get fresh user data
+    const db = getDb();
+    const foundUsers = await db.select().from(users).where(eq(users.id, payload.userId)).limit(1);
+
+    if (foundUsers.length === 0) {
+      return c.json({
+        error: {
+          message: 'User not found',
+        },
+      }, 404);
+    }
+
+    const user = foundUsers[0];
+
+    // Generate new token
+    const newToken = auth.generateToken({
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      plan: user.plan,
+    });
+
+    return c.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        plan: user.plan,
+      },
+      token: newToken,
+    });
+
+  } catch (error) {
+    return c.json({
+      error: {
+        message: 'Invalid token',
+      },
+    }, 401);
+  }
 });
 
 // POST /api/auth/verify - Verify email
@@ -98,4 +228,78 @@ authRoutes.post('/reset-password', async (c) => {
   });
 });
 
+// POST /api/auth/sync - Sync user from OAuth provider (Supabase)
+authRoutes.post('/sync', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { email, name, avatar, provider, providerId } = body;
+
+    const db = getDb();
+
+    // Check if user exists
+    const existingUsers = await db.select().from(users).where(eq(users.email, email)).limit(1);
+
+    let user;
+    const now = new Date();
+
+    if (existingUsers.length > 0) {
+      // Update existing user
+      const updated = await db.update(users)
+        .set({
+          lastLoginAt: now,
+          ...(avatar && { avatar }),
+          ...(provider && { provider }),
+          ...(providerId && { providerId }),
+        })
+        .where(eq(users.email, email))
+        .returning();
+
+      user = updated[0];
+    } else {
+      // Create new user
+      const newUser = await db.insert(users).values({
+        email,
+        name: name || email.split('@')[0],
+        avatar,
+        provider,
+        providerId,
+        plan: 'free',
+        planStatus: 'trial',
+        status: 'active',
+        lastLoginAt: now,
+      }).returning();
+
+      user = newUser[0];
+    }
+
+    // Generate JWT token for our API
+    const token = auth.generateToken({
+      userId: user.id,
+      email: user.email,
+      name: user.name || '',
+      plan: user.plan,
+    });
+
+    return c.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        plan: user.plan,
+        avatar: user.avatar,
+        status: user.status,
+      },
+      token,
+    });
+  } catch (error) {
+    console.error('Auth sync error:', error);
+    return c.json({
+      error: {
+        message: error instanceof Error ? error.message : 'Sync failed',
+      },
+    }, 500);
+  }
+});
+
+// Export routes
 export { authRoutes };

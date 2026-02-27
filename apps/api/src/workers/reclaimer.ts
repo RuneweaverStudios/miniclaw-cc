@@ -175,23 +175,29 @@ export class Reclaimer {
       // TODO: Send notification to user
       // TODO: Backup user data if needed
 
+      // Get server details before removing from pool
+      const server = await poolManager.getServer(expiry.dropletId);
+      if (!server) {
+        console.warn(`[Reclaimer] Server ${expiry.dropletId} not found in pool`);
+        return;
+      }
+
       // Release server back to pool or destroy
       await poolManager.removeServer(expiry.dropletId);
 
       // Queue reclamation job
-      const { queue } = require("../lib/queue.js");
+      const { getReclaimQueue } = await import("../lib/queue.js");
+      const queue = getReclaimQueue();
 
       await queue.add(
-        "reclaim",
         {
           dropletId: expiry.dropletId,
           userId: expiry.userId,
-          ipAddress: "", // Will be fetched by worker
-          stack: "openclaw", // Will be fetched by worker
+          ipAddress: server.ipAddress || "",
+          stack: server.stack,
         },
         {
           jobId: `reclaim-${expiry.dropletId}`,
-          attempts: 2,
         }
       );
 

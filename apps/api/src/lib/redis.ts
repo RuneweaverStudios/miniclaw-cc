@@ -1,14 +1,17 @@
 import Redis from 'ioredis';
 
-let redis: Redis | null = null;
+let redisInstance: Redis | null = null;
 
 export function getRedis(): Redis {
-  if (!redis) {
-    const url = process.env.REDIS_URL;
-    if (!url) {
-      throw new Error('REDIS_URL environment variable is not set');
-    }
-    redis = new Redis(url, {
+  if (!redisInstance) {
+    const host = process.env.REDIS_HOST || 'localhost';
+    const port = Number.parseInt(process.env.REDIS_PORT || '6379');
+    const password = process.env.REDIS_PASSWORD;
+
+    redisInstance = new Redis({
+      host,
+      port,
+      password,
       maxRetriesPerRequest: 3,
       retryStrategy(times) {
         const delay = Math.min(times * 50, 2000);
@@ -16,22 +19,25 @@ export function getRedis(): Redis {
       },
     });
 
-    redis.on('error', (err) => {
+    redisInstance.on('error', (err) => {
       console.error('Redis Client Error:', err);
     });
 
-    redis.on('connect', () => {
+    redisInstance.on('connect', () => {
       console.log('Redis Client Connected');
     });
   }
 
-  return redis;
+  return redisInstance;
 }
 
+// Export singleton for easy importing
+export const redis = getRedis();
+
 export async function closeRedis(): Promise<void> {
-  if (redis) {
-    await redis.quit();
-    redis = null;
+  if (redisInstance) {
+    await redisInstance.quit();
+    redisInstance = null;
   }
 }
 

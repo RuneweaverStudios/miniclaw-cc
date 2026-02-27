@@ -118,7 +118,8 @@ async function getSSHKeys(token: string): Promise<number[]> {
  * Generate cloud-init user data
  */
 async function generateUserData(stack: StackType, version: string): Promise<string> {
-  return `#cloud-config
+  // Base cloud-init configuration
+  const baseConfig = `#cloud-config
 package_update: true
 package_upgrade: true
 
@@ -161,6 +162,60 @@ runcmd:
 
 final_message: "MiniClaw droplet initialization complete!"
 `;
+
+  // Stack-specific configuration
+  if (stack === 'nanobot') {
+    // For Nanobot, we'll install Python 3.11+ and pip
+    return `#cloud-config
+package_update: true
+package_upgrade: true
+
+# Add Python 3.11 PPA for Ubuntu
+packages:
+  - curl
+  - wget
+  - git
+  - ufw
+  - fail2ban
+  - ca-certificates
+  - gnupg
+  - lsb-release
+  - software-properties-common
+
+runcmd:
+  # Add deadsnakes PPA for Python 3.11
+  - add-apt-repository ppa:deadsnakes/ppa -y
+  - apt-get update -qq
+
+  # Install Python 3.11 and pip
+  - apt-get install -y -qq python3.11 python3.11-venv python3-pip python3-dev
+
+  # Configure firewall
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw --force enable
+
+  # Configure fail2ban
+  - systemctl enable fail2ban
+  - systemctl start fail2ban
+
+  # Write stack info
+  - echo '{"stack":"${stack}","version":"${version}","provisioned_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}' > /var/miniclaw-stack.json
+
+  # Create miniclaw directory
+  - mkdir -p /etc/miniclaw
+  - mkdir -p /var/log/miniclaw
+
+  # Disable password authentication
+  - sed -i 's/PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+  - systemctl restart sshd
+
+final_message: "MiniClaw Nanobot droplet initialization complete! Ready for stack installation."
+`;
+  }
+
+  return baseConfig;
 }
 
 /**

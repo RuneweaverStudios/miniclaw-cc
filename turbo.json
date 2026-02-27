@@ -20,6 +20,5 @@
     "clean": {
       "cache": false
     }
-  },
-  "outputLogs": "errors-only"
+  }
 }

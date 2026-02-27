@@ -151,8 +151,12 @@ export interface Metrics {
 
 // Auth API
 export const authApi = {
-  signup: (data: { email: string; password: string; name: string }) =>
-    api.post<{ user: User; token: string }>('/auth/signup', data),
+  signup: (data: {
+    email: string;
+    password: string;
+    name: string;
+    stack?: string;
+  }) => api.post<{ user: User; token: string }>('/auth/signup', data),
 
   login: (data: { email: string; password: string }) =>
     api.post<{ user: User; token: string }>('/auth/login', data),

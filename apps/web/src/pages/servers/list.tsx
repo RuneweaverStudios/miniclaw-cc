@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { serversApi } from '@/lib/api';
-import { Plus, Server, Play, Stop, RotateCcw, Trash2 } from 'lucide-react';
+import { Plus, Server, Play, Square, RotateCcw, Trash2 } from 'lucide-react';
 
 export function ServerList() {
   const { data: servers, isLoading } = useQuery({
@@ -164,7 +164,7 @@ export function ServerList() {
                               className="text-yellow-600 hover:text-yellow-900"
                               title="Stop"
                             >
-                              <Stop className="h-4 w-4" />
+                              <Square className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => handleAction(server.id, 'restart')}
