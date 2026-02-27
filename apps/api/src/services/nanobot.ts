@@ -372,6 +372,143 @@ echo "[Nanobot] Configuration complete!"
   }
 
   /**
+   * Test gateway and agent response
+   * Starts gateway temporarily, verifies it works, then stops it
+   */
+  async testGateway(ipAddress: string): Promise<{ success: boolean; error?: string }> {
+    const sshKey = process.env.SSH_PRIVATE_KEY || process.env.SSH_PRIVATE_KEY_PATH;
+    if (!sshKey) return { success: false, error: "SSH key not configured" };
+
+    const ssh = new NodeSSH();
+
+    try {
+      // Load SSH key from file if needed
+      let privateKey = sshKey;
+      if (process.env.SSH_PRIVATE_KEY_PATH) {
+        const fs = await import('fs');
+        privateKey = fs.readFileSync(process.env.SSH_PRIVATE_KEY_PATH, 'utf8');
+      }
+
+      await ssh.connect({
+        host: ipAddress,
+        username: "root",
+        privateKey,
+        readyTimeout: 30000,
+      });
+
+      console.log(`[Nanobot] Testing gateway on ${ipAddress}...`);
+
+      // First, ensure config exists with minimal settings
+      const testScript = `
+#!/bin/bash
+set -e
+
+echo "[Nanobot] Setting up test config..."
+
+# Create minimal config for testing
+cat > /root/.nanobot/config.json << 'EOF'
+{
+  "providers": {
+    "openrouter": {
+      "apiKey": "${process.env.OPENROUTER_API_KEY || ''}"
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": "anthropic/claude-opus-4-5",
+      "provider": "openrouter",
+      "maxTokens": 1000,
+      "temperature": 0.1
+    }
+  },
+  "tools": {
+    "restrictToWorkspace": false
+  }
+}
+EOF
+
+# Start gateway
+echo "[Nanobot] Starting gateway for testing..."
+pkill -f "nanobot gateway" || true
+sleep 2
+nohup nanobot gateway > /tmp/nanobot-gateway-test.log 2>&1 &
+sleep 5
+
+# Verify gateway process
+if ! pgrep -f "nanobot gateway" > /dev/null; then
+  echo "[Nanobot] ERROR: Gateway failed to start"
+  tail -30 /tmp/nanobot-gateway-test.log
+  exit 1
+fi
+
+# Test gateway API
+echo "[Nanobot] Testing gateway health endpoint..."
+for i in {1..10}; do
+  if curl -s http://localhost:18790/health > /dev/null 2>&1; then
+    echo "[Nanobot] Gateway health check passed"
+    break
+  fi
+  if [ $i -eq 10 ]; then
+    echo "[Nanobot] ERROR: Gateway health check failed after 10 attempts"
+    tail -30 /tmp/nanobot-gateway-test.log
+    exit 1
+  fi
+  sleep 2
+done
+
+# Check gateway is listening
+echo "[Nanobot] Verifying gateway is listening..."
+if ! netstat -tln 2>/dev/null | grep -q ":18790"; then
+  echo "[Nanobot] WARNING: Gateway port 18790 not visible, checking with ss..."
+  if ! ss -tln 2>/dev/null | grep -q ":18790"; then
+    echo "[Nanobot] ERROR: Gateway not listening on port 18790"
+    exit 1
+  fi
+fi
+
+echo "[Nanobot] Gateway test passed"
+
+# Stop gateway after successful test
+echo "[Nanobot] Stopping gateway after successful test..."
+pkill -f "nanobot gateway" || true
+sleep 2
+
+# Verify gateway stopped
+if pgrep -f "nanobot gateway" > /dev/null; then
+  echo "[Nanobot] WARNING: Gateway still running, forcing stop..."
+  pkill -9 -f "nanobot gateway" || true
+fi
+
+echo "[Nanobot] Gateway stopped successfully, ready for allocation"
+`;
+
+      const result = await ssh.execCommand(testScript, {
+        execOptions: { cwd: "/root" },
+      });
+
+      if (result.code !== 0) {
+        console.error(`[Nanobot] Gateway test failed:`, result.stderr);
+        return {
+          success: false,
+          error: result.stderr || "Gateway test failed",
+        };
+      }
+
+      console.log(`[Nanobot] Gateway test successful on ${ipAddress}`);
+      return { success: true };
+
+    } catch (error) {
+      console.error(`[Nanobot] Gateway test error:`, error);
+      return {
+        success: false,
+        error: (error as Error).message,
+      };
+    } finally {
+      ssh.dispose();
+    }
+  }
+
+  /**
    * Get Nanobot status
    */
   async getStatus(ipAddress: string): Promise<{

@@ -29,25 +29,28 @@ export const DEFAULT_POOL_CONFIG: PoolConfig = {
 
 /**
  * Pool configuration overrides by environment
+ *
+ * Note: targetPoolSize is divided between nanobot and openclaw stacks equally
+ * So targetPoolSize: 10 means 5 nanobot + 5 openclaw servers
  */
 export const POOL_CONFIG_BY_ENV: Record<string, Partial<PoolConfig>> = {
   development: {
     targetPoolSize: 2,
     minPoolSize: 1,
-    maxPoolSize: 5,
+    maxPoolSize: 4,
     healthCheckInterval: 60,
     regions: [DEFAULT_REGION],
   },
   staging: {
-    targetPoolSize: 5,
+    targetPoolSize: 4,
     minPoolSize: 2,
-    maxPoolSize: 20,
+    maxPoolSize: 10,
   },
   production: {
-    targetPoolSize: 15,
-    minPoolSize: 5,
-    maxPoolSize: 100,
-    replenishBatchSize: 3,
+    targetPoolSize: 10, // 5 nanobot + 5 openclaw = 10 total
+    minPoolSize: 4, // 2 of each
+    maxPoolSize: 20, // 10 of each absolute max
+    replenishBatchSize: 2, // Provision 2 at a time (1 of each)
   },
 };
 

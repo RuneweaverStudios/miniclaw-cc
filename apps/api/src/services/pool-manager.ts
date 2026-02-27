@@ -197,14 +197,27 @@ export class PoolManager {
 
   /**
    * Check if pool needs replenishment
+   *
+   * For specific stack: checks if that stack is below threshold
+   * For general: checks if total pool is below minimum
    */
   async needsReplenishment(stack?: StackType): Promise<boolean> {
     const metrics = await this.getMetrics();
+    const perStackTarget = Math.ceil(this.config.targetPoolSize / 2);
 
     if (stack) {
       const standby = metrics.standbyByStack[stack];
-      const target = Math.ceil(this.config.targetPoolSize / 2); // Per stack target
-      return standby < target * REPLENISHMENT_SETTINGS.thresholdRatio;
+      const threshold = Math.floor(perStackTarget * REPLENISHMENT_SETTINGS.thresholdRatio);
+      return standby < threshold;
+    }
+
+    // For general replenishment, check if either stack is below threshold
+    for (const s of ["openclaw", "nanobot"] as StackType[]) {
+      const standby = metrics.standbyByStack[s];
+      const threshold = Math.floor(perStackTarget * REPLENISHMENT_SETTINGS.thresholdRatio);
+      if (standby < threshold) {
+        return true;
+      }
     }
 
     return metrics.standbyServers < this.config.minPoolSize;
@@ -212,6 +225,9 @@ export class PoolManager {
 
   /**
    * Replenish pool
+   *
+   * Provisions equal numbers of nanobot and openclaw servers
+   * Target pool size is divided equally between the two stacks
    */
   async replenish(stack?: StackType): Promise<void> {
     if (!this.config.autoReplenish) {
@@ -238,17 +254,28 @@ export class PoolManager {
 
     console.log(`[PoolManager] Starting replenishment${stack ? ` for ${stack}` : ""}`);
 
+    // Calculate per-stack target (divide total target equally)
+    const perStackTarget = Math.ceil(this.config.targetPoolSize / 2);
     const batchSize = this.config.replenishBatchSize;
-    const stacks: StackType[] = stack ? [stack] : ["openclaw", "nanobot"];
 
-    for (const s of stacks) {
-      const needed = Math.min(
-        batchSize,
-        this.config.targetPoolSize - metrics.standbyByStack[s]
-      );
-
+    // If specific stack requested, only provision that stack
+    if (stack) {
+      const needed = Math.min(batchSize, perStackTarget - metrics.standbyByStack[stack]);
       if (needed > 0) {
-        await this.provisionServers(s, needed);
+        await this.provisionServers(stack, needed);
+      }
+    } else {
+      // Provision both stacks to maintain equal numbers
+      const stacks: StackType[] = ["openclaw", "nanobot"];
+      for (const s of stacks) {
+        const needed = Math.min(
+          Math.ceil(batchSize / 2), // Split batch between stacks
+          perStackTarget - metrics.standbyByStack[s]
+        );
+
+        if (needed > 0) {
+          await this.provisionServers(s, needed);
+        }
       }
     }
 
