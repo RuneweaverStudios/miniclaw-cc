@@ -96,6 +96,7 @@ export async function provisionDroplet(options: ProvisionOptions): Promise<Dropl
 
 /**
  * Get SSH keys from DigitalOcean
+ * Only uses the "ghost-m4-mac" key which matches the local SSH key
  */
 async function getSSHKeys(token: string): Promise<number[]> {
   try {
@@ -104,8 +105,9 @@ async function getSSHKeys(token: string): Promise<number[]> {
       params: { per_page: 100 },
     });
 
+    // Only use the ghost-m4-mac key (ID: 54440239) which matches local ~/.ssh/id_ed25519
     return response.data.ssh_keys
-      .filter((k: { name: string }) => k.name.includes("miniclaw") || k.name.includes("pool"))
+      .filter((k: { name: string }) => k.name === "ghost-m4-mac")
       .map((k: { id: number }) => k.id);
 
   } catch (error) {

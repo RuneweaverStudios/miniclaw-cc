@@ -265,4 +265,93 @@ serversRoutes.put('/:serverId/config', async (c) => {
   });
 });
 
+// GET /api/servers/:serverId/diagnose - Diagnose gateway issues
+serversRoutes.get('/:serverId/diagnose', async (c) => {
+  const serverId = parseInt(c.req.param('serverId'));
+  const user = c.get('user');
+
+  try {
+    // Get server from Redis
+    const redisKey = `pool:server:id:${serverId}`;
+    const data = await redis.get(redisKey);
+
+    if (!data) {
+      return c.json({ error: 'Server not found' }, 404);
+    }
+
+    const server = JSON.parse(data) as PoolServerConfig;
+
+    // Verify ownership
+    if (server.allocatedTo !== user.userId) {
+      return c.json({ error: 'Access denied' }, 403);
+    }
+
+    // Import SSH client
+    const { SSHClient } = await import('../lib/ssh.js');
+    const ssh = new SSHClient();
+
+    // Connect and diagnose
+    const diagnostics: Record<string, any> = {
+      server: {
+        dropletId: server.dropletId,
+        hostname: server.hostname,
+        ipAddress: server.ipAddress,
+        stack: server.stack,
+      },
+      checks: {},
+    };
+
+    try {
+      await ssh.connect({
+        host: server.ipAddress!,
+        username: 'root',
+        readyTimeout: 10000,
+      });
+
+      // Check if Nanobot is installed
+      try {
+        const whichResult = await ssh.executeCommand('which nanobot');
+        diagnostics.checks.nanobotInstalled = whichResult.trim() !== '';
+      } catch {}
+
+      // Check gateway process
+      try {
+        const psResult = await ssh.executeCommand('ps aux | grep "[n]anobot gateway"');
+        diagnostics.checks.gatewayRunning = psResult.trim() !== '';
+      } catch {}
+
+      // Check systemd service
+      try {
+        const systemctlResult = await ssh.executeCommand('systemctl is-active nanobot-gateway 2>/dev/null || echo "not-found"');
+        diagnostics.checks.systemdService = systemctlResult.trim();
+      } catch {}
+
+      // Get gateway logs
+      try {
+        const logsResult = await ssh.executeCommand('tail -50 /tmp/nanobot-gateway.log 2>/dev/null || echo "No logs"');
+        diagnostics.checks.gatewayLogs = logsResult.trim();
+      } catch {}
+
+      // Check config
+      try {
+        const configResult = await ssh.executeCommand('cat /root/.nanobot/config.json 2>/dev/null || echo "No config"');
+        diagnostics.checks.hasConfig = configResult.trim() !== 'No config';
+      } catch {}
+
+    } catch (sshError) {
+      diagnostics.checks.sshError = (sshError as Error).message;
+    } finally {
+      try {
+        ssh.dispose();
+      } catch {}
+    }
+
+    return c.json(diagnostics);
+
+  } catch (error) {
+    console.error('Diagnosis error:', error);
+    return c.json({ error: 'Diagnosis failed', message: (error as Error).message }, 500);
+  }
+});
+
 export { serversRoutes };
