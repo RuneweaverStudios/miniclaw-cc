@@ -63,14 +63,33 @@ export class Allocator {
     }
 
     try {
-      // Find available server
+      // STEP 1: Scan and sync pool with DigitalOcean before allocation
+      console.log(`[Allocator] Scanning pool to verify droplets before allocation...`);
+      const removedCount = await this.syncPoolWithDigitalOcean();
+      if (removedCount > 0) {
+        console.log(`[Allocator] Removed ${removedCount} dead droplets from pool`);
+      }
+
+      // STEP 2: Find available server from verified pool
       const server = await this.findAvailableServer(stack, region);
 
       if (!server) {
         return {
           success: false,
           allocatedAt: new Date(),
-          reason: "No servers available in standby pool",
+          reason: "No servers available in standby pool (after verifying droplet status)",
+        };
+      }
+
+      // STEP 3: Final verification - double-check droplet exists before allocating
+      const exists = await this.verifyDropletExists(server.dropletId);
+      if (!exists) {
+        console.warn(`[Allocator] Droplet ${server.dropletId} no longer exists, removing from pool`);
+        await poolManager.removeServer(server.dropletId);
+        return {
+          success: false,
+          allocatedAt: new Date(),
+          reason: "Selected droplet no longer exists, please try again",
         };
       }
 
@@ -98,6 +117,83 @@ export class Allocator {
     } finally {
       // Release lock
       await this.releaseLock(lockKey, lockValue);
+    }
+  }
+
+  /**
+   * Sync pool state with DigitalOcean API
+   * Removes droplets from pool that no longer exist
+   */
+  private async syncPoolWithDigitalOcean(): Promise<number> {
+    try {
+      const token = process.env.DIGITALOCEAN_TOKEN;
+      if (!token) {
+        console.warn("[Allocator] No DIGITALOCEAN_TOKEN configured, skipping sync");
+        return 0;
+      }
+
+      // Get all droplets from DigitalOcean
+      const response = await fetch("https://api.digitalocean.com/v2/droplets?per_page=200", {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        console.error("[Allocator] Failed to fetch droplets from DO:", response.status);
+        return 0;
+      }
+
+      const data = await response.json();
+      const activeDropletIds = new Set(
+        data.droplets.map((d: any) => d.id)
+      );
+
+      // Get all pool servers
+      const poolServers = await poolManager.getServers();
+      let removedCount = 0;
+
+      for (const server of poolServers) {
+        if (!activeDropletIds.has(server.dropletId)) {
+          console.warn(`[Allocator] Droplet ${server.dropletId} (${server.ipAddress}) no longer exists, removing from pool`);
+          await poolManager.removeServer(server.dropletId);
+          removedCount++;
+        }
+      }
+
+      return removedCount;
+    } catch (error) {
+      console.error("[Allocator] Error syncing pool with DigitalOcean:", error);
+      return 0;
+    }
+  }
+
+  /**
+   * Verify a specific droplet exists via DigitalOcean API
+   */
+  private async verifyDropletExists(dropletId: number): Promise<boolean> {
+    try {
+      const token = process.env.DIGITALOCEAN_TOKEN;
+      if (!token) {
+        console.warn("[Allocator] No DIGITALOCEAN_TOKEN configured, assuming droplet exists");
+        return true;
+      }
+
+      const response = await fetch(`https://api.digitalocean.com/v2/droplets/${dropletId}`, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+
+      if (response.status === 404) {
+        return false;
+      }
+
+      return response.ok;
+    } catch (error) {
+      console.error(`[Allocator] Error verifying droplet ${dropletId}:`, error);
+      // On error, assume it exists to avoid false positives
+      return true;
     }
   }
 

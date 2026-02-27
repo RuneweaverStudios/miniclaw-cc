@@ -15,6 +15,7 @@ import { startReplenisher } from './workers/replenisher.js';
 import { startHealthMonitor } from './workers/health-monitor.js';
 import { startReclaimer } from './workers/reclaimer.js';
 import { startInstallWorkers } from './workers/install.js';
+import { startPoolSyncWorker } from './workers/pool-sync.js';
 import { authRoutes } from './routes/auth.js';
 import { poolRoutes } from './routes/pool.js';
 import { serversRoutes } from './routes/servers.js';
@@ -130,6 +131,7 @@ async function main() {
   startHealthMonitor();
   startReclaimer();
   startInstallWorkers();
+  startPoolSyncWorker();
   console.log('[Workers] Background workers started');
 
   // Start API server
