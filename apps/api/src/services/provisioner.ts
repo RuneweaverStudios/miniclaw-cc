@@ -149,7 +149,7 @@ runcmd:
   - systemctl start fail2ban
 
   # Write stack info
-  - echo '{"stack":"${stack}","version":"${version}","provisioned_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}' > /var/miniclaw-stack.json
+  - echo "{\"stack\":\"${stack}\",\"version\":\"${version}\",\"provisioned_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > /var/miniclaw-stack.json
 
   # Create miniclaw directory
   - mkdir -p /etc/miniclaw
@@ -203,7 +203,7 @@ runcmd:
   - systemctl start fail2ban
 
   # Write stack info
-  - echo '{"stack":"${stack}","version":"${version}","provisioned_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}' > /var/miniclaw-stack.json
+  - echo "{\"stack\":\"${stack}\",\"version\":\"${version}\",\"provisioned_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > /var/miniclaw-stack.json
 
   # Create miniclaw directory
   - mkdir -p /etc/miniclaw

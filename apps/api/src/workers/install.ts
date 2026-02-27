@@ -21,6 +21,10 @@ async function processOpenClawInstall(job: InstallJobData): Promise<void> {
   console.log(`[InstallWorker] Starting ${stack} installation for droplet ${dropletId} at ${ipAddress}`);
 
   try {
+    // Update state to "testing"
+    const { poolManager } = await import("../services/pool-manager.js");
+    await poolManager.updateServerState(dropletId, "testing");
+
     // Import OpenClaw service dynamically to avoid circular dependencies
     const { openclawService } = await import("../services/openclaw.js");
 
@@ -32,11 +36,16 @@ async function processOpenClawInstall(job: InstallJobData): Promise<void> {
 
     if (result.success) {
       console.log(`[InstallWorker] OpenClaw installation complete for droplet ${dropletId}`);
+      // Update state to "standby" after successful installation
+      await poolManager.updateServerState(dropletId, "standby", "healthy");
     } else {
       throw new Error(result.error || "OpenClaw installation failed");
     }
   } catch (error) {
     console.error(`[InstallWorker] OpenClaw installation failed for droplet ${dropletId}:`, error);
+    // Update state to "error" on failure
+    const { poolManager } = await import("../services/pool-manager.js");
+    await poolManager.updateServerState(dropletId, "error", "unhealthy");
     throw error;
   }
 }
@@ -50,6 +59,10 @@ async function processNanobotInstall(job: InstallJobData): Promise<void> {
   console.log(`[InstallWorker] Starting ${stack} installation for droplet ${dropletId} at ${ipAddress}`);
 
   try {
+    // Update state to "testing"
+    const { poolManager } = await import("../services/pool-manager.js");
+    await poolManager.updateServerState(dropletId, "testing");
+
     // Install Nanobot (version 0.1.3.post7 from PyPI to avoid oauth-cli-kit)
     const result = await nanobotService.install({
       ipAddress,
@@ -58,11 +71,16 @@ async function processNanobotInstall(job: InstallJobData): Promise<void> {
 
     if (result.success) {
       console.log(`[InstallWorker] Nanobot installation complete for droplet ${dropletId}`);
+      // Update state to "standby" after successful installation
+      await poolManager.updateServerState(dropletId, "standby", "healthy");
     } else {
       throw new Error(result.error || "Nanobot installation failed");
     }
   } catch (error) {
     console.error(`[InstallWorker] Nanobot installation failed for droplet ${dropletId}:`, error);
+    // Update state to "error" on failure
+    const { poolManager } = await import("../services/pool-manager.js");
+    await poolManager.updateServerState(dropletId, "error", "unhealthy");
     throw error;
   }
 }
