@@ -38,8 +38,8 @@ export class Allocator {
   private redis: Redis;
   private lockTimeout = 30000; // 30 seconds
 
-  constructor(redis?: Redis) {
-    this.redis = redis || require("../lib/redis.js").redis;
+  constructor(redisClient?: Redis) {
+    this.redis = redisClient || redis;
   }
 
   /**
