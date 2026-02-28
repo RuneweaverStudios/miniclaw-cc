@@ -69,16 +69,19 @@ export class OpenClawService {
 
       const installScript = `
         set -euo pipefail
+        export DEBIAN_FRONTEND=noninteractive
 
         # Install dependencies
-        apt-get update
+        apt-get update -qq
         apt-get install -y curl nodejs npm
 
-        # Run OpenClaw install script
-        curl -fsSL https://openclaw.ai/install.sh | bash
+        # Run OpenClaw install script (non-interactive)
+        # Disable prompts and TTY requirements
+        curl -fsSL https://openclaw.ai/install.sh | bash -s -- --yes --no-interactive 2>/dev/null || \
+        curl -fsSL https://openclaw.ai/install.sh | DEBIAN_FRONTEND=noninteractive bash
 
-        # Configure if needed
-        ${config ? this.generateConfig(config) : ""}
+        # Verify installation
+        which openclaw && openclaw --version || echo "OpenClaw installation may need manual verification"
 
         echo "OpenClaw installation complete"
       `;

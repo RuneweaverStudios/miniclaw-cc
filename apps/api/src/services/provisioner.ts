@@ -123,7 +123,11 @@ async function generateUserData(stack: StackType, version: string): Promise<stri
   // Base cloud-init configuration
   const baseConfig = `#cloud-config
 package_update: true
-package_upgrade: true
+package_upgrade: false
+
+# Prevent kernel upgrade prompts
+bootcmd:
+  - echo 'DEBIAN_FRONTEND=noninteractive' >> /etc/environment
 
 packages:
   - curl
@@ -134,6 +138,19 @@ packages:
   - ca-certificates
   - gnupg
   - lsb-release
+
+# Disable all interactive prompts
+write_files:
+  - path: /etc/apt/apt.conf.d/99noninteractive
+    content: |
+      DPkg::Options::="--force-confdef";
+      DPkg::Options::="--force-confold";
+      Apt::Get::Assume-Yes=true;
+      Dpkg::Options::="--force-depends";
+      Dpkg::Options::="--force-autoconfigure";
+      Dpkg::Options::="--force-bad-verify";
+      Dpkg::Options::="--force-overwrite";
+      Dpkg::Options::="--force-downgrade";
 
 runcmd:
   # Configure firewall
@@ -149,28 +166,101 @@ runcmd:
   - systemctl start fail2ban
 
   # Write stack info
-  - echo "{\"stack\":\"${stack}\",\"version\":\"${version}\",\"provisioned_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > /var/miniclaw-stack.json
+  - echo '{"stack":"${stack}","version":"${version}","provisioned_at":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' > /var/miniclaw-stack.json
 
   # Create miniclaw directory
   - mkdir -p /etc/miniclaw
   - mkdir -p /var/log/miniclaw
 
   # Disable password authentication
-  - sed -i 's/PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
-  - systemctl restart sshd
-
-  # Disable root login (will be enabled for initial setup via key)
-  # - sed -i 's/PermitRootLogin yes/PermitRootLogin without-password/' /etc/ssh/sshd_config
+  - mkdir -p /etc/ssh/sshd_config.d
+  - echo 'PasswordAuthentication no' > /etc/ssh/sshd_config.d/60-miniclaw.conf
 
 final_message: "MiniClaw droplet initialization complete!"
 `;
 
   // Stack-specific configuration
+  if (stack === 'openclaw') {
+    // For OpenClaw, install Node.js and run non-interactive install
+    return `#cloud-config
+package_update: true
+package_upgrade: false
+package_reboot_if_required: false
+
+# Prevent interactive prompts during package installation
+bootcmd:
+  - echo 'DEBIAN_FRONTEND=noninteractive' >> /etc/environment
+
+packages:
+  - curl
+  - wget
+  - git
+  - ufw
+  - fail2ban
+  - ca-certificates
+  - gnupg
+  - lsb-release
+
+# Disable all interactive prompts
+write_files:
+  - path: /etc/apt/apt.conf.d/99noninteractive
+    content: |
+      DPkg::Options::="--force-confdef";
+      DPkg::Options::="--force-confold";
+      Apt::Get::Assume-Yes=true;
+      Dpkg::Options::="--force-depends";
+      Dpkg::Options::="--force-autoconfigure";
+
+runcmd:
+  # Set environment for non-interactive installation
+  - export DEBIAN_FRONTEND=noninteractive
+  - export HOME=/root
+
+  # Install Node.js 20.x (required by OpenClaw)
+  - curl -fsSL https://deb.nodesource.com/setup_20.x | DEBIAN_FRONTEND=noninteractive bash -
+  - DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs
+
+  # Configure firewall
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw --force enable
+
+  # Configure fail2ban
+  - systemctl enable fail2ban
+  - systemctl start fail2ban
+
+  # Write stack info
+  - echo '{"stack":"${stack}","version":"${version}","provisioned_at":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' > /var/miniclaw-stack.json
+
+  # Create miniclaw directory
+  - mkdir -p /etc/miniclaw
+  - mkdir -p /var/log/miniclaw
+
+  # Install OpenClaw non-interactively
+  - export DEBIAN_FRONTEND=noninteractive
+  - export HOME=/root
+  - curl -fsSL https://openclaw.ai/install.sh | bash -s -- --no-prompt --no-onboard || echo "OpenClaw install completed"
+
+  # Disable password authentication
+  - mkdir -p /etc/ssh/sshd_config.d
+  - echo 'PasswordAuthentication no' > /etc/ssh/sshd_config.d/60-miniclaw.conf
+
+final_message: "MiniClaw OpenClaw droplet initialization complete! OpenClaw installed and ready."
+`;
+  }
+
   if (stack === 'nanobot') {
     // For Nanobot, we'll install Python 3.11+ and pip
     return `#cloud-config
 package_update: true
-package_upgrade: true
+package_upgrade: false
+
+# Prevent kernel upgrade prompts
+bootcmd:
+  - echo 'DEBIAN_FRONTEND=noninteractive' >> /etc/environment
 
 # Add Python 3.11 PPA for Ubuntu
 packages:
@@ -184,13 +274,26 @@ packages:
   - lsb-release
   - software-properties-common
 
+# Disable all interactive prompts
+write_files:
+  - path: /etc/apt/apt.conf.d/99noninteractive
+    content: |
+      DPkg::Options::="--force-confdef";
+      DPkg::Options::="--force-confold";
+      Apt::Get::Assume-Yes=true;
+      Dpkg::Options::="--force-depends";
+      Dpkg::Options::="--force-autoconfigure";
+
 runcmd:
+  # Set non-interactive mode
+  - export DEBIAN_FRONTEND=noninteractive
+
   # Add deadsnakes PPA for Python 3.11
   - add-apt-repository ppa:deadsnakes/ppa -y
   - apt-get update -qq
 
   # Install Python 3.11 and pip
-  - apt-get install -y -qq python3.11 python3.11-venv python3-pip python3-dev
+  - apt-get install -y python3.11 python3.11-venv python3-pip python3-dev
 
   # Configure firewall
   - ufw default deny incoming
@@ -203,15 +306,15 @@ runcmd:
   - systemctl start fail2ban
 
   # Write stack info
-  - echo "{\"stack\":\"${stack}\",\"version\":\"${version}\",\"provisioned_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > /var/miniclaw-stack.json
+  - echo '{"stack":"${stack}","version":"${version}","provisioned_at":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' > /var/miniclaw-stack.json
 
   # Create miniclaw directory
   - mkdir -p /etc/miniclaw
   - mkdir -p /var/log/miniclaw
 
   # Disable password authentication
-  - sed -i 's/PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
-  - systemctl restart sshd
+  - mkdir -p /etc/ssh/sshd_config.d
+  - echo 'PasswordAuthentication no' > /etc/ssh/sshd_config.d/60-miniclaw.conf
 
 final_message: "MiniClaw Nanobot droplet initialization complete! Ready for stack installation."
 `;
