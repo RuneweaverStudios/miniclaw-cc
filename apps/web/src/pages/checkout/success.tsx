@@ -11,6 +11,12 @@ export function CheckoutSuccess() {
   useEffect(() => {
     const processCheckout = async () => {
       try {
+        // Get wizard selections from localStorage
+        const framework = localStorage.getItem('wizard_framework') || 'nanobot';
+        const model = localStorage.getItem('wizard_model') || 'minimax/minimax-m2.5';
+        const channel = localStorage.getItem('wizard_channel') || 'telegram';
+        const plan = localStorage.getItem('selected_plan') || 'nanobot';
+
         // Verify checkout session and deploy server
         const response = await fetch('/api/billing/checkout-success', {
           method: 'POST',
@@ -18,7 +24,13 @@ export function CheckoutSuccess() {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
           },
-          body: JSON.stringify({ sessionId }),
+          body: JSON.stringify({
+            sessionId,
+            plan,
+            framework,
+            model,
+            channel,
+          }),
         });
 
         if (response.ok) {

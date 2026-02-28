@@ -147,10 +147,10 @@ billingRoutes.post('/checkout-success', zValidator('json', checkoutSuccessSchema
   const { sessionId, plan, framework, model, channel } = c.req.valid('json');
 
   try {
-    // Get selections from localStorage (or metadata)
-    const selectedFramework = framework || localStorage.getItem('wizard_framework') || 'nanobot';
-    const selectedModel = model || localStorage.getItem('wizard_model') || 'minimax/minimax-m2.5';
-    const selectedChannel = channel || localStorage.getItem('wizard_channel') || 'telegram';
+    // Get selections from request body (sent from frontend localStorage)
+    const selectedFramework = framework || 'nanobot';
+    const selectedModel = model || 'minimax/minimax-m2.5';
+    const selectedChannel = channel || 'telegram';
     const selectedPlan = plan || 'nanobot';
 
     // Allocate server from pool

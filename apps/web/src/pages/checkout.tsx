@@ -97,6 +97,8 @@ export function Checkout() {
 
       if (response.ok) {
         const { checkoutUrl } = await response.json();
+        // Save selected plan for retrieval after Stripe redirect
+        localStorage.setItem('selected_plan', selectedPlan);
         window.location.href = checkoutUrl;
       } else {
         const error = await response.json();
