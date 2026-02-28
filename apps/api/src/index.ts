@@ -23,6 +23,7 @@ import { allocateRoutes } from './routes/servers-allocate.js';
 import { billingRoutes } from './routes/billing.js';
 import { webhookRoutes } from './routes/webhooks.js';
 import { stacksRoutes } from './routes/stacks.js';
+import { proxyRoutes } from './routes/proxy.js';
 import adminReadyPoolRoutes from './routes/admin-ready-pool.js';
 
 const app = new Hono();
@@ -76,6 +77,7 @@ app.route('/api/servers', serversRoutes);
 app.route('/api/servers', allocateRoutes);
 app.route('/api/billing', billingRoutes);
 app.route('/api/webhooks', webhookRoutes);
+app.route('/api/proxy', proxyRoutes);
 app.route('/api/admin', adminReadyPoolRoutes);
 
 // Error handling

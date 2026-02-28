@@ -38,33 +38,27 @@ const FRAMEWORK_INFO = {
 };
 
 const PLAN_INFO = {
-  free: {
-    name: 'Free Trial',
-    price: '$0',
-    period: '7 days',
-    features: ['7 day trial', '$25 token allocation', '1 server', 'Telegram channel', 'All models available']
-  },
-  basic: {
-    name: 'Basic',
-    price: '$5',
+  nanobot: {
+    name: 'Nanobot',
+    price: '$39',
     period: '/month',
-    features: ['$25 monthly token allocation', '1 dedicated server', 'Telegram channel', 'All models available', 'Cancel anytime']
+    features: ['$25 token credit included', 'Nanobot framework', '2GB RAM server', 'Telegram channel', 'All models available', 'Pay only for what you use']
   },
-  pro: {
-    name: 'Pro',
-    price: '$15',
+  openclaw: {
+    name: 'OpenClaw',
+    price: '$59',
     period: '/month',
-    features: ['$75 monthly token allocation', '2 dedicated servers', 'Telegram + Discord', 'Priority support', 'Cancel anytime']
+    features: ['$25 token credit included', 'OpenClaw framework', '4GB RAM server', 'Telegram + Discord', 'Browser dashboard', 'Pay only for what you use']
   },
 };
 
-type Plan = 'free' | 'basic' | 'pro';
+type Plan = 'nanobot' | 'openclaw';
 
 export function Checkout() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<Plan>('basic');
+  const [selectedPlan, setSelectedPlan] = useState<Plan>('nanobot');
 
   // Get wizard selections from localStorage (set during auth callback)
   const [framework, setFramework] = useState('');
@@ -248,7 +242,7 @@ export function Checkout() {
               </div>
               <div>
                 <p className="text-sm font-medium text-white">Token Allocation</p>
-                <p className="text-xs text-zinc-400">{selectedPlan === 'basic' ? '$25' : selectedPlan === 'pro' ? '$75' : '$25'} monthly credits included</p>
+                <p className="text-xs text-zinc-400">$25 monthly token credit included. Pay only for what you use beyond that.</p>
               </div>
             </div>
           </div>

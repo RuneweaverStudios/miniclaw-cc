@@ -33,6 +33,10 @@ export const userServers = pgTable('user_servers', {
   allocatedAt: timestamp('allocated_at', { withTimezone: true }).defaultNow(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   healthStatus: varchar('health_status', { length: 50 }).default('unknown'),
+  // Token billing fields
+  openrouterKey: varchar('openrouter_key', { length: 255 }),
+  openrouterKeyLimitCents: integer('openrouter_key_limit_cents').default(2500), // $25.00 default
+  tokenUsageCents: integer('token_usage_cents').default(0),
   config: jsonb('config').$type<{
     monitoringEnabled: boolean;
     alertsEnabled: boolean;
@@ -90,6 +94,17 @@ export const invoices = pgTable('invoices', {
   paidAt: timestamp('paid_at', { withTimezone: true }),
 });
 
+export const tokenPurchases = pgTable('token_purchases', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  userServerId: uuid('user_server_id').references(() => userServers.id, { onDelete: 'cascade' }),
+  amountCents: integer('amount_cents').notNull(),
+  stripePaymentId: varchar('stripe_payment_id', { length: 255 }),
+  status: varchar('status', { length: 50 }).default('pending'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+});
+
 export const auditLogs = pgTable('audit_logs', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
@@ -112,5 +127,7 @@ export type Subscription = typeof subscriptions.$inferSelect;
 export type NewSubscription = typeof subscriptions.$inferInsert;
 export type Invoice = typeof invoices.$inferSelect;
 export type NewInvoice = typeof invoices.$inferInsert;
+export type TokenPurchase = typeof tokenPurchases.$inferSelect;
+export type NewTokenPurchase = typeof tokenPurchases.$inferInsert;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type NewAuditLog = typeof auditLogs.$inferInsert;

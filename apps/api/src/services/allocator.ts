@@ -9,6 +9,7 @@ import type { PoolServerConfig, StackType } from "@miniclaw/shared";
 import { poolManager } from "./pool-manager.js";
 import { redis } from "../lib/redis.js";
 import { randomBytes } from "crypto";
+import { openrouterService } from "./openrouter.js";
 
 /**
  * Allocation request
@@ -105,6 +106,21 @@ export class Allocator {
 
       // Record allocation
       await this.recordAllocation(userId, server.dropletId);
+
+      // Create OpenRouter API key for this droplet
+      try {
+        const openrouterKey = await openrouterService.createDropletKey(server.dropletId);
+        console.log(`[Allocator] Created OpenRouter key ${openrouterKey} for droplet ${server.dropletId}`);
+
+        // Store the key in the server config for retrieval
+        server.config = {
+          ...server.config,
+          openrouterKey,
+        };
+      } catch (error) {
+        console.error(`[Allocator] Failed to create OpenRouter key for droplet ${server.dropletId}:`, error);
+        // Don't fail allocation if OpenRouter key creation fails
+      }
 
       console.log(`[Allocator] Allocated server ${server.dropletId} to user ${userId}`);
 

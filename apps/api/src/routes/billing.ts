@@ -50,7 +50,7 @@ billingRoutes.get('/subscription', async (c) => {
 
 // POST /api/billing/checkout - Create checkout session
 const checkoutSchema = z.object({
-  plan: z.enum(['free', 'basic', 'pro']),
+  plan: z.enum(['nanobot', 'openclaw']),
   framework: z.string(),
   model: z.string(),
   channel: z.string(),
@@ -81,22 +81,14 @@ billingRoutes.post('/checkout', zValidator('json', checkoutSchema), async (c) =>
     }
 
     // Determine price
-    let priceId: string;
     let amount = 0;
 
     switch (plan) {
-      case 'free':
-        // Free trial - no charge, but we'll use a placeholder
-        amount = 0;
-        priceId = 'price_free_trial';
+      case 'nanobot':
+        amount = 3900; // $39.00
         break;
-      case 'basic':
-        amount = 500; // $5.00
-        priceId = 'price_basic_monthly';
-        break;
-      case 'pro':
-        amount = 1500; // $15.00
-        priceId = 'price_pro_monthly';
+      case 'openclaw':
+        amount = 5900; // $59.00
         break;
     }
 
@@ -115,22 +107,14 @@ billingRoutes.post('/checkout', zValidator('json', checkoutSchema), async (c) =>
       },
     };
 
-    if (plan === 'free') {
-      // For free plan, skip Stripe and go directly to success
-      return c.json({
-        freeTrial: true,
-        redirectUrl: `/checkout/success?plan=${plan}&framework=${framework}&model=${model}&channel=${channel}`,
-      });
-    }
-
     // Add line item for paid plans
     sessionParams.line_items = [
       {
         price_data: {
           currency: 'usd',
           product_data: {
-            name: `${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan`,
-            description: `${plan} monthly subscription - Miniclaw AI Assistant`,
+            name: `${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan - $${(amount / 100).toFixed(0)}/month`,
+            description: `${plan === 'nanobot' ? 'Nanobot' : 'OpenClaw'} monthly subscription with $25 token credit - Miniclaw AI Assistant`,
           },
           unit_amount: amount,
         },
@@ -167,7 +151,7 @@ billingRoutes.post('/checkout-success', zValidator('json', checkoutSuccessSchema
     const selectedFramework = framework || localStorage.getItem('wizard_framework') || 'nanobot';
     const selectedModel = model || localStorage.getItem('wizard_model') || 'minimax/minimax-m2.5';
     const selectedChannel = channel || localStorage.getItem('wizard_channel') || 'telegram';
-    const selectedPlan = plan || 'basic';
+    const selectedPlan = plan || 'nanobot';
 
     // Allocate server from pool
     const allocation = await allocator.allocate({
@@ -278,7 +262,7 @@ billingRoutes.post('/subscription/renew', async (c) => {
 
 // PUT /api/billing/subscription/plan - Change plan
 const changePlanSchema = z.object({
-  newPlan: z.enum(['pro', 'enterprise']),
+  newPlan: z.enum(['nanobot', 'openclaw']),
 });
 
 billingRoutes.put('/subscription/plan', zValidator('json', changePlanSchema), async (c) => {
