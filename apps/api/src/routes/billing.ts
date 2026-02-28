@@ -171,8 +171,28 @@ billingRoutes.post('/checkout-success', zValidator('json', checkoutSuccessSchema
     // TODO: Store subscription in database
     // TODO: Send deployment confirmation
 
+    // Format server response for frontend consumption
+    const serverResponse = {
+      dropletId: allocation.server.dropletId,
+      dropletName: allocation.server.dropletName,
+      name: allocation.server.dropletName,
+      ipAddress: allocation.server.ipAddress,
+      status: 'ready' as const,
+      stack: allocation.server.stack,
+      framework: allocation.server.stack,
+      region: allocation.server.region,
+      size: allocation.server.size,
+      sshPort: allocation.server.sshPort || 22,
+      state: allocation.server.state,
+      healthStatus: allocation.server.healthStatus,
+      allocatedTo: allocation.server.allocatedTo,
+      openrouterKey: allocation.server.config?.openrouterKey || '',
+      model: selectedModel,
+      channel: selectedChannel,
+    };
+
     return c.json({
-      server: allocation.server,
+      server: serverResponse,
       subscription: {
         plan: selectedPlan,
         framework: selectedFramework,
