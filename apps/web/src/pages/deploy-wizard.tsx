@@ -51,29 +51,65 @@ export function DeployWizard() {
 
   // Check if server was already allocated during checkout
   useEffect(() => {
-    const deployedServer = localStorage.getItem('deployed_server');
-    if (deployedServer) {
-      try {
-        const server = JSON.parse(deployedServer);
-        // Set up the allocation with the deployed server
-        setAllocation({
-          dropletId: server.dropletId,
-          name: server.dropletName || server.name,
-          ipAddress: server.ipAddress,
-          status: 'ready',
-          framework: server.stack,
-          model: localStorage.getItem('wizard_model') || 'minimax/minimax-m2.5',
-          channel: localStorage.getItem('wizard_channel') || 'telegram',
-        });
-        // Skip directly to Telegram pairing step (step 4)
-        setStep(4);
-        // Clear the temp storage so we don't re-use it on revisit
-        localStorage.removeItem('deployed_server');
-      } catch (error) {
-        console.error('Failed to parse deployed server:', error);
+    const checkForAllocatedServer = async () => {
+      // First check localStorage (from checkout success)
+      const deployedServer = localStorage.getItem('deployed_server');
+      if (deployedServer) {
+        try {
+          const server = JSON.parse(deployedServer);
+          console.log('[DeployWizard] Found deployed server in localStorage:', server);
+          // Set up the allocation with the deployed server
+          setAllocation({
+            dropletId: server.dropletId,
+            name: server.dropletName || server.name,
+            ipAddress: server.ipAddress,
+            status: 'ready',
+            framework: server.framework || server.stack,
+            model: server.model || localStorage.getItem('wizard_model') || 'minimax/minimax-m2.5',
+            channel: server.channel || localStorage.getItem('wizard_channel') || 'telegram',
+          });
+          // Skip directly to Telegram pairing step (step 4)
+          setStep(4);
+          // Clear the temp storage so we don't re-use it on revisit
+          localStorage.removeItem('deployed_server');
+          return;
+        } catch (error) {
+          console.error('Failed to parse deployed server:', error);
+        }
       }
-    }
-  }, []);
+
+      // Fallback: Check API for existing allocations
+      try {
+        const response = await fetch('/api/servers', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.servers && data.servers.length > 0) {
+            const server = data.servers[0];
+            console.log('[DeployWizard] Found existing server from API:', server);
+            setAllocation({
+              dropletId: server.dropletId,
+              name: server.dropletName || server.name,
+              ipAddress: server.ipAddress,
+              status: 'ready',
+              framework: server.stack,
+              model: localStorage.getItem('wizard_model') || 'minimax/minimax-m2.5',
+              channel: localStorage.getItem('wizard_channel') || 'telegram',
+            });
+            setStep(4);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch existing servers:', error);
+      }
+    };
+
+    checkForAllocatedServer();
+  }, [token]);
 
   const handleAllocateDroplet = async () => {
     setLoading(true);
