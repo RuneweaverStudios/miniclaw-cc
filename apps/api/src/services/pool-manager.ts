@@ -376,6 +376,160 @@ export class PoolManager {
       }
     }
   }
+
+  /**
+   * Reconcile pool to target size by removing excess servers
+   *
+   * Strategy:
+   * 1. Remove servers with unhealthy/pending health status first
+   * 2. Remove allocated servers that are past their trial period
+   * 3. Remove oldest standby servers (by stateChangedAt)
+   * 4. Balance between stacks to maintain equal distribution
+   *
+   * @param dryRun - Log what would be removed without actually removing
+   * @returns Summary of removed servers
+   */
+  async reconcileToTarget(dryRun = false): Promise<{
+    removed: Array<{ dropletId: number; dropletName: string; stack: string; reason: string }>;
+    nanobotCount: number;
+    openclawCount: number;
+    totalCount: number;
+  }> {
+    const targetTotal = this.config.targetPoolSize;
+    const targetPerStack = Math.ceil(targetTotal / 2);
+
+    const removed: Array<{ dropletId: number; dropletName: string; stack: string; reason: string }> = [];
+
+    // Get all servers
+    const allServers = await this.getServers();
+
+    // Count by stack and state
+    const nanobotServers = allServers.filter(s => s.stack === 'nanobot');
+    const openclawServers = allServers.filter(s => s.stack === 'openclaw');
+
+    // Determine excess by stack
+    const nanobotExcess = Math.max(0, nanobotServers.length - targetPerStack);
+    const openclawExcess = Math.max(0, openclawServers.length - targetPerStack);
+
+    const totalExcess = nanobotExcess + openclawExcess;
+
+    if (totalExcess === 0) {
+      console.log(`[PoolManager] Pool is at target size (${allServers.length}/${targetTotal})`);
+      return {
+        removed: [],
+        nanobotCount: nanobotServers.length,
+        openclawCount: openclawServers.length,
+        totalCount: allServers.length,
+      };
+    }
+
+    console.log(`[PoolManager] Reconciling pool: ${allServers.length} → ${targetTotal} (excess: ${totalExcess})`);
+    console.log(`[PoolManager] Nanobots: ${nanobotServers.length}/${targetPerStack} (excess: ${nanobotExcess})`);
+    console.log(`[PoolManager] OpenClaws: ${openclawServers.length}/${targetPerStack} (excess: ${openclawExcess})`);
+
+    // Helper to sort servers by removal priority
+    const sortByRemovalPriority = (servers: typeof allServers) => {
+      return servers.sort((a, b) => {
+        // Priority 1: Unhealthy or pending health (remove first)
+        const aPriority = a.healthStatus === 'healthy' ? 0 : 1;
+        const bPriority = b.healthStatus === 'healthy' ? 0 : 1;
+        if (aPriority !== bPriority) return bPriority - aPriority;
+
+        // Priority 2: Allocated vs standby (prefer keeping standby)
+        const aStatePriority = a.state === 'standby' ? 0 : 1;
+        const bStatePriority = b.state === 'standby' ? 0 : 1;
+        if (aStatePriority !== bStatePriority) return bStatePriority - aStatePriority;
+
+        // Priority 3: Oldest first (by stateChangedAt)
+        // Handle both Date objects and ISO strings
+        const aTime = a.stateChangedAt instanceof Date
+          ? a.stateChangedAt.getTime()
+          : new Date(a.stateChangedAt).getTime();
+        const bTime = b.stateChangedAt instanceof Date
+          ? b.stateChangedAt.getTime()
+          : new Date(b.stateChangedAt).getTime();
+        return aTime - bTime;
+      });
+    };
+
+    // Remove excess nanobots
+    if (nanobotExcess > 0) {
+      const sortedNanobots = sortByRemovalPriority(nanobotServers);
+      const toRemove = sortedNanobots.slice(0, nanobotExcess);
+
+      for (const server of toRemove) {
+        const reason = server.healthStatus !== 'healthy'
+          ? `unhealthy (${server.healthStatus})`
+          : server.state !== 'standby'
+            ? `state: ${server.state}`
+            : 'oldest standby server';
+
+        console.log(`[PoolManager] ${dryRun ? '[DRY RUN] Would remove' : 'Removing'} nanobot ${server.dropletId} (${server.dropletName}) - ${reason}`);
+
+        if (!dryRun) {
+          try {
+            await this.removeServer(server.dropletId);
+            // Don't destroy the droplet, just remove from pool
+            // User can manually destroy droplets via DO dashboard
+          } catch (error) {
+            console.error(`[PoolManager] Failed to remove server ${server.dropletId}:`, error);
+          }
+        }
+
+        removed.push({
+          dropletId: server.dropletId,
+          dropletName: server.dropletName,
+          stack: server.stack,
+          reason,
+        });
+      }
+    }
+
+    // Remove excess openclaws
+    if (openclawExcess > 0) {
+      const sortedOpenclaws = sortByRemovalPriority(openclawServers);
+      const toRemove = sortedOpenclaws.slice(0, openclawExcess);
+
+      for (const server of toRemove) {
+        const reason = server.healthStatus !== 'healthy'
+          ? `unhealthy (${server.healthStatus})`
+          : server.state !== 'standby'
+            ? `state: ${server.state}`
+            : 'oldest standby server';
+
+        console.log(`[PoolManager] ${dryRun ? '[DRY RUN] Would remove' : 'Removing'} openclaw ${server.dropletId} (${server.dropletName}) - ${reason}`);
+
+        if (!dryRun) {
+          try {
+            await this.removeServer(server.dropletId);
+          } catch (error) {
+            console.error(`[PoolManager] Failed to remove server ${server.dropletId}:`, error);
+          }
+        }
+
+        removed.push({
+          dropletId: server.dropletId,
+          dropletName: server.dropletName,
+          stack: server.stack,
+          reason,
+        });
+      }
+    }
+
+    // Get final counts
+    const finalServers = await this.getServers();
+    const finalNanobots = finalServers.filter(s => s.stack === 'nanobot').length;
+    const finalOpenclaws = finalServers.filter(s => s.stack === 'openclaw').length;
+
+    console.log(`[PoolManager] Reconciliation complete: ${finalServers.length}/${targetTotal} (${removed.length} removed)`);
+
+    return {
+      removed,
+      nanobotCount: finalNanobots,
+      openclawCount: finalOpenclaws,
+      totalCount: finalServers.length,
+    };
+  }
 }
 
 // Singleton instance

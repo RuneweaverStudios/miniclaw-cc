@@ -33,6 +33,7 @@ async function main() {
     .option('--nanobots <count>', 'Number of Nanobot servers to add', '0')
     .option('--openclaws <count>', 'Number of OpenClaw servers to add', '0')
     .option('--use-existing', 'Add existing DigitalOcean droplets instead of provisioning')
+    .option('--reconcile', 'Remove excess servers to reach target before adding')
     .parse();
 
   const options = program.opts();
@@ -45,23 +46,77 @@ async function main() {
   const nanobotsToAdd = parseInt(options.nanobots);
   const openclawsToAdd = parseInt(options.openclaws);
   const useExisting = options.useExisting || false;
+  const reconcile = options.reconcile || false;
 
-  // Get current pool state
+  const TARGET_PER_STACK = 5; // targetPoolSize / 2
+  const TARGET_TOTAL = 10;
+
+  // Get current pool state (all servers, not just healthy)
   const currentServers = await poolManager.getServers();
-  const currentNanobots = currentServers.filter(s => s.stack === 'nanobot' && s.state === 'standby' && s.healthStatus === 'healthy').length;
-  const currentOpenclaws = currentServers.filter(s => s.stack === 'openclaw' && s.state === 'standby' && s.healthStatus === 'healthy').length;
+  const currentNanobots = currentServers.filter(s => s.stack === 'nanobot').length;
+  const currentOpenclaws = currentServers.filter(s => s.stack === 'openclaw').length;
 
-  console.log(`Current pool state:`);
-  console.log(`  Nanobots (standby + healthy): ${currentNanobots}/5`);
-  console.log(`  OpenClaws (standby + healthy): ${currentOpenclaws}/5`);
+  console.log(`Current pool state (all servers):`);
+  console.log(`  Nanobots: ${currentNanobots}/${TARGET_PER_STACK}`);
+  console.log(`  OpenClaws: ${currentOpenclaws}/${TARGET_PER_STACK}`);
+  console.log(`  Total: ${currentServers.length}/${TARGET_TOTAL}`);
   console.log('');
 
-  // Calculate what's needed
-  const neededNanobots = Math.max(0, nanobotsToAdd > 0 ? nanobotsToAdd : 5 - currentNanobots);
-  const neededOpenclaws = Math.max(0, openclawsToAdd > 0 ? openclawsToAdd : 5 - currentOpenclaws);
+  // Reconcile if requested
+  if (reconcile) {
+    console.log('[Reconcile] Checking for excess servers...');
+    const result = await poolManager.reconcileToTarget(true); // dry run first
+
+    if (result.removed.length > 0) {
+      console.log(`\n[Reconcile] Would remove ${result.removed.length} excess servers:`);
+      for (const server of result.removed) {
+        console.log(`  - ${server.dropletName} (${server.stack}): ${server.reason}`);
+      }
+      console.log('');
+
+      // Ask for confirmation
+      console.log('Run with --reconcile to actually remove. (Currently dry-run mode)');
+      return;
+    } else {
+      console.log('[Reconcile] No excess servers found\n');
+    }
+
+    // Refresh counts after reconcile
+    const refreshedServers = await poolManager.getServers();
+    const refreshedNanobots = refreshedServers.filter(s => s.stack === 'nanobot').length;
+    const refreshedOpenclaws = refreshedServers.filter(s => s.stack === 'openclaw').length;
+
+    // Recalculate needed based on reconciled counts
+    var neededNanobots = Math.max(0, Math.min(nanobotsToAdd || (TARGET_PER_STACK - refreshedNanobots), TARGET_PER_STACK - refreshedNanobots));
+    var neededOpenclaws = Math.max(0, Math.min(openclawsToAdd || (TARGET_PER_STACK - refreshedOpenclaws), TARGET_PER_STACK - refreshedOpenclaws));
+  } else {
+    // Calculate what's needed (don't exceed target)
+    const nanobotHeadroom = Math.max(0, TARGET_PER_STACK - currentNanobots);
+    const openclawHeadroom = Math.max(0, TARGET_PER_STACK - currentOpenclaws);
+
+    var neededNanobots = nanobotsToAdd > 0
+      ? Math.min(nanobotsToAdd, nanobotHeadroom)
+      : nanobotHeadroom;
+
+    var neededOpenclaws = openclawsToAdd > 0
+      ? Math.min(openclawsToAdd, openclawHeadroom)
+      : openclawHeadroom;
+  }
+
+  if (currentNanobots >= TARGET_PER_STACK && nanobotsToAdd > 0) {
+    console.log(`⚠️  Nanobots already at target (${currentNanobots}/${TARGET_PER_STACK}), not adding more`);
+    var neededNanobots = 0;
+  }
+
+  if (currentOpenclaws >= TARGET_PER_STACK && openclawsToAdd > 0) {
+    console.log(`⚠️  OpenClaws already at target (${currentOpenclaws}/${TARGET_PER_STACK}), not adding more`);
+    var neededOpenclaws = 0;
+  }
 
   if (neededNanobots === 0 && neededOpenclaws === 0) {
-    console.log('✅ Pool is already full! No refilling needed.');
+    console.log('✅ Pool is already at target! No refilling needed.');
+    console.log(`   Nanobots: ${currentNanobots}/${TARGET_PER_STACK}`);
+    console.log(`   OpenClaws: ${currentOpenclaws}/${TARGET_PER_STACK}`);
     return;
   }
 
@@ -82,20 +137,25 @@ async function main() {
   console.log('Final pool state:');
 
   const finalServers = await poolManager.getServers();
-  const finalNanobots = finalServers.filter(s => s.stack === 'nanobot' && s.state === 'standby' && s.healthStatus === 'healthy').length;
-  const finalOpenclaws = finalServers.filter(s => s.stack === 'openclaw' && s.state === 'standby' && s.healthStatus === 'healthy').length;
-  const totalHealthy = finalNanobots + finalOpenclaws;
+  const finalNanobots = finalServers.filter(s => s.stack === 'nanobot').length;
+  const finalOpenclaws = finalServers.filter(s => s.stack === 'openclaw').length;
+  const totalCount = finalServers.length;
 
-  console.log(`  Nanobots (standby + healthy): ${finalNanobots}/5`);
-  console.log(`  OpenClaws (standby + healthy): ${finalOpenclaws}/5`);
-  console.log(`  Total ready for allocation: ${totalHealthy}/10`);
+  console.log(`  Nanobots: ${finalNanobots}/${TARGET_PER_STACK}`);
+  console.log(`  OpenClaws: ${finalOpenclaws}/${TARGET_PER_STACK}`);
+  console.log(`  Total: ${totalCount}/${TARGET_TOTAL}`);
   console.log('');
 
-  if (totalHealthy === 10) {
-    console.log('✅✅✅ POOL IS FULL AND READY! ✅✅✅');
+  if (totalCount === TARGET_TOTAL && finalNanobots === TARGET_PER_STACK && finalOpenclaws === TARGET_PER_STACK) {
+    console.log('✅✅✅ POOL IS AT TARGET SIZE! ✅✅✅');
   } else {
-    console.log(`⚠️  Pool needs ${10 - totalHealthy} more healthy servers`);
-    console.log(`   Run: npm run test:onboarding -- --count ${10 - totalHealthy}`);
+    const neededNanobots = Math.max(0, TARGET_PER_STACK - finalNanobots);
+    const neededOpenclaws = Math.max(0, TARGET_PER_STACK - finalOpenclaws);
+    if (neededNanobots > 0 || neededOpenclaws > 0) {
+      console.log(`⚠️  Pool needs more servers to reach target:`);
+      if (neededNanobots > 0) console.log(`   - ${neededNanobots} more nanobots`);
+      if (neededOpenclaws > 0) console.log(`   - ${neededOpenclaws} more openclaws`);
+    }
   }
 }
 

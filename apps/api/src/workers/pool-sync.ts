@@ -116,6 +116,13 @@ async function syncPoolWithDigitalOcean(): Promise<void> {
     const metrics = await poolManager.getMetrics();
     console.log(`[PoolSync] Pool metrics: ${metrics.standbyServers} standby, ${metrics.provisioningServers} provisioning, ${metrics.allocatedServers} allocated`);
 
+    // Reconcile pool to target size (remove excess servers)
+    console.log("[PoolSync] Reconciling pool to target size...");
+    const reconcileResult = await poolManager.reconcileToTarget();
+    if (reconcileResult.removed.length > 0) {
+      console.log(`[PoolSync] Reconciled pool: removed ${reconcileResult.removed.length} excess servers`);
+    }
+
   } catch (error) {
     console.error("[PoolSync] Error syncing pool with DigitalOcean:", error);
   }

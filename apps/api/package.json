@@ -14,6 +14,7 @@
     "test:onboarding": "tsx test-onboarding-flow.ts",
     "pool:check": "tsx check-pool.ts",
     "pool:refill": "tsx pool-refill.ts",
+    "pool:reconcile": "tsx reconcile-pool.ts",
     "pool:prepare": "tsx prepare-for-prod.ts",
     "pool:deallocate": "tsx deallocate-server.ts",
     "pool:clear-allocations": "tsx clear-all-allocations.ts"
