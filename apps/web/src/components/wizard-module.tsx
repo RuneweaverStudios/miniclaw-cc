@@ -273,10 +273,14 @@ export function WizardModule() {
 
   const handleFramework = (id: string) => {
     setFramework(id);
+    // Persist to localStorage so it survives to checkout
+    localStorage.setItem('wizard_framework', id);
   };
 
   const handleModel = (id: string) => {
     setModelId(id);
+    // Persist to localStorage so it survives to checkout
+    localStorage.setItem('wizard_model', id);
 
     // Check if this is a premium model
     const model = FEATURED_MODELS.find(m => m.id === id);

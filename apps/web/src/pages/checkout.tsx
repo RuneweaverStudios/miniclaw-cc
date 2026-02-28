@@ -84,6 +84,7 @@ export function Checkout() {
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<Plan>('nanobot');
+  const [showModelSelector, setShowModelSelector] = useState(false);
 
   // Get wizard selections from localStorage (set during auth callback)
   const [framework, setFramework] = useState('');
@@ -174,6 +175,12 @@ export function Checkout() {
               </div>
               <p className="text-sm text-zinc-500 mt-1">{modelDetails?.pricing}</p>
             </div>
+            <button
+              onClick={() => setShowModelSelector(true)}
+              className="text-sm text-sky-400 hover:text-sky-300 transition-colors"
+            >
+              Change
+            </button>
           </div>
 
           {/* Channel */}
@@ -308,6 +315,60 @@ export function Checkout() {
           </p>
         </div>
       </div>
+
+      {/* Model Selector Modal */}
+      {showModelSelector && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-zinc-900 border border-zinc-800 p-6">
+            <div className="mb-4">
+              <h3 className="text-xl font-semibold text-white">Select AI Model</h3>
+              <p className="text-sm text-zinc-400 mt-1">Choose the AI model for your agent</p>
+            </div>
+
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+              {Object.entries(MODEL_INFO).map(([id, info]) => (
+                <button
+                  key={id}
+                  onClick={() => {
+                    setModel(id);
+                    localStorage.setItem('wizard_model', id);
+                    setShowModelSelector(false);
+                  }}
+                  className={`w-full text-left rounded-lg border p-4 transition ${
+                    model === id
+                      ? 'border-sky-500 bg-sky-500/10'
+                      : 'border-zinc-700/80 bg-zinc-800/50 hover:border-zinc-600 hover:bg-zinc-800/70'
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-white">{info.name}</p>
+                        <span className="text-xs bg-sky-500/25 text-sky-300 px-2 py-0.5 rounded">{info.tag}</span>
+                      </div>
+                      <p className="text-sm text-zinc-400 mt-1">{info.pricing}</p>
+                    </div>
+                    {model === id && (
+                      <svg className="h-5 w-5 text-sky-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setShowModelSelector(false)}
+                className="px-4 py-2 rounded-lg border border-zinc-700 text-sm font-medium text-white hover:bg-zinc-800 transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
