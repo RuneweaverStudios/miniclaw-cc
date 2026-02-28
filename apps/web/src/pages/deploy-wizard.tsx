@@ -126,42 +126,76 @@ export function DeployWizard() {
     setAllocationTimeoutElapsed(false);
     setStep(2);
 
-    try {
-      const response = await fetch('/api/servers/allocate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          framework,
-          model,
-          channel,
-        }),
-      });
+    // Automatic retry for allocation lock errors
+    const maxRetries = 3;
+    let retryCount = 0;
+    let success = false;
+    let lastError: string | null = null;
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to allocate droplet');
+    while (!success && retryCount < maxRetries) {
+      try {
+        const response = await fetch('/api/servers/allocate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            framework,
+            model,
+            channel,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          lastError = errorData.reason || errorData.error || 'Failed to allocate droplet';
+
+          // Check if this is a lock acquisition error (retryable)
+          if (lastError.includes('Could not acquire allocation lock') && retryCount < maxRetries - 1) {
+            retryCount++;
+            const delay = 1000 * retryCount; // 1s, 2s, 3s delays
+            console.log(`Allocation attempt ${retryCount} failed, retrying in ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+
+          throw new Error(lastError);
+        }
+
+        const data = await response.json();
+        setAllocation(data);
+        success = true;
+
+        // Pre-installed droplets should be ready immediately or in "activating" state
+        if (data.status === 'ready') {
+          setStep(4); // Skip to Telegram setup
+        } else {
+          setStep(3); // Show activation progress
+        }
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to allocate droplet';
+        lastError = errorMessage;
+
+        // If this was the last retry, give up
+        if (retryCount >= maxRetries - 1) {
+          break;
+        }
+
+        retryCount++;
+        const delay = 1000 * retryCount; // 1s, 2s, 3s delays
+        console.log(`Allocation attempt ${retryCount} failed: ${errorMessage}, retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
+    }
 
-      const data = await response.json();
-      setAllocation(data);
-
-      // Pre-installed droplets should be ready immediately or in "activating" state
-      if (data.status === 'ready') {
-        setStep(4); // Skip to Telegram setup
-      } else {
-        setStep(3); // Show activation progress
-      }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to allocate droplet';
-      setAllocationError(errorMessage);
+    if (!success && lastError) {
+      setAllocationError(lastError);
 
       // Stay in loading state for 60 seconds before showing error
       setTimeout(() => {
         setAllocationTimeoutElapsed(true);
-        setError(errorMessage);
+        setError(lastError);
         setStep(1);
         setLoading(false);
       }, 60000);
