@@ -45,8 +45,16 @@ let installNanobotQueue: Queue<InstallJob> | null = null;
 
 export function getProvisionQueue(): Queue<ProvisionServerJob> {
   if (!provisionQueue) {
+    const redis = getRedis();
+    const connection = {
+      host: redis.options.host || 'localhost',
+      port: redis.options.port || 6379,
+      db: redis.options.db || 0,
+      password: redis.options.password,
+      maxRetriesPerRequest: null,
+    };
     provisionQueue = new Queue<ProvisionServerJob>('provision-servers', {
-      connection: getRedis(),
+      connection,
       defaultJobOptions: {
         attempts: 3,
         backoff: {
@@ -67,8 +75,16 @@ export function getProvisionQueue(): Queue<ProvisionServerJob> {
 
 export function getDestroyQueue(): Queue<DestroyServerJob> {
   if (!destroyQueue) {
+    const redis = getRedis();
+    const connection = {
+      host: redis.options.host || 'localhost',
+      port: redis.options.port || 6379,
+      db: redis.options.db || 0,
+      password: redis.options.password,
+      maxRetriesPerRequest: null,
+    };
     destroyQueue = new Queue<DestroyServerJob>('destroy-servers', {
-      connection: getRedis(),
+      connection,
       defaultJobOptions: {
         attempts: 3,
         backoff: {
@@ -89,8 +105,16 @@ export function getDestroyQueue(): Queue<DestroyServerJob> {
 
 export function getHealthCheckQueue(): Queue<HealthCheckJob> {
   if (!healthCheckQueue) {
+    const redis = getRedis();
+    const connection = {
+      host: redis.options.host || 'localhost',
+      port: redis.options.port || 6379,
+      db: redis.options.db || 0,
+      password: redis.options.password,
+      maxRetriesPerRequest: null,
+    };
     healthCheckQueue = new Queue<HealthCheckJob>('health-checks', {
-      connection: getRedis(),
+      connection,
       defaultJobOptions: {
         attempts: 3,
         backoff: {
@@ -111,8 +135,16 @@ export function getHealthCheckQueue(): Queue<HealthCheckJob> {
 
 export function getBackupQueue(): Queue<BackupJob> {
   if (!backupQueue) {
+    const redis = getRedis();
+    const connection = {
+      host: redis.options.host || 'localhost',
+      port: redis.options.port || 6379,
+      db: redis.options.db || 0,
+      password: redis.options.password,
+      maxRetriesPerRequest: null,
+    };
     backupQueue = new Queue<BackupJob>('backups', {
-      connection: getRedis(),
+      connection,
       defaultJobOptions: {
         attempts: 2,
         backoff: {
@@ -133,8 +165,16 @@ export function getBackupQueue(): Queue<BackupJob> {
 
 export function getReclaimQueue(): Queue<ReclaimJob> {
   if (!reclaimQueue) {
+    const redis = getRedis();
+    const connection = {
+      host: redis.options.host || 'localhost',
+      port: redis.options.port || 6379,
+      db: redis.options.db || 0,
+      password: redis.options.password,
+      maxRetriesPerRequest: null,
+    };
     reclaimQueue = new Queue<ReclaimJob>('reclaims', {
-      connection: getRedis(),
+      connection,
       defaultJobOptions: {
         attempts: 2,
         backoff: {
@@ -155,8 +195,16 @@ export function getReclaimQueue(): Queue<ReclaimJob> {
 
 export function getInstallOpenClawQueue(): Queue<InstallJob> {
   if (!installOpenClawQueue) {
+    const redis = getRedis();
+    const connection = {
+      host: redis.options.host || 'localhost',
+      port: redis.options.port || 6379,
+      db: redis.options.db || 0,
+      password: redis.options.password,
+      maxRetriesPerRequest: null,
+    };
     installOpenClawQueue = new Queue<InstallJob>('install-openclaw', {
-      connection: getRedis(),
+      connection,
       defaultJobOptions: {
         attempts: 3,
         backoff: {
@@ -177,8 +225,16 @@ export function getInstallOpenClawQueue(): Queue<InstallJob> {
 
 export function getInstallNanobotQueue(): Queue<InstallJob> {
   if (!installNanobotQueue) {
+    const redis = getRedis();
+    const connection = {
+      host: redis.options.host || 'localhost',
+      port: redis.options.port || 6379,
+      db: redis.options.db || 0,
+      password: redis.options.password,
+      maxRetriesPerRequest: null,
+    };
     installNanobotQueue = new Queue<InstallJob>('install-nanobot', {
-      connection: getRedis(),
+      connection,
       defaultJobOptions: {
         attempts: 3,
         backoff: {

@@ -399,6 +399,7 @@ echo "[Nanobot] Configuration complete!"
       console.log(`[Nanobot] Testing gateway on ${ipAddress}...`);
 
       // First, ensure config exists with minimal settings
+      const openrouterKey = process.env.OPENROUTER_API_KEY || '';
       const testScript = `
 #!/bin/bash
 set -e
@@ -410,7 +411,7 @@ cat > /root/.nanobot/config.json << 'EOF'
 {
   "providers": {
     "openrouter": {
-      "apiKey": "${process.env.OPENROUTER_API_KEY || ''}"
+      "apiKey": "${openrouterKey}"
     }
   },
   "agents": {

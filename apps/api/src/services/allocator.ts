@@ -10,7 +10,7 @@ import { poolManager } from "./pool-manager.js";
 import { redis } from "../lib/redis.js";
 import { randomBytes } from "crypto";
 import { openrouterService } from "./openrouter.js";
-import { db } from "../lib/db/index.js";
+import { getDb } from "../lib/db/index.js";
 import { userServers } from "../db/schema.js";
 
 /**
@@ -224,7 +224,7 @@ export class Allocator {
   ): Promise<PoolServerConfig | null> {
     const servers = await poolManager.getServers("standby");
 
-    // Filter by stack
+    // Filter by stack - only healthy servers should be allocated
     const stackServers = servers.filter((s) => s.stack === stack && s.healthStatus === "healthy");
 
     if (stackServers.length === 0) {
@@ -283,6 +283,7 @@ export class Allocator {
   private async recordAllocation(userId: string, dropletId: number, server: PoolServerConfig): Promise<void> {
     try {
       // Insert into database
+      const db = getDb();
       await db.insert(userServers).values({
         userId,
         dropletId,
