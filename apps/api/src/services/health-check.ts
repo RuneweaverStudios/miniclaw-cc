@@ -47,10 +47,21 @@ export class HealthChecker {
       timestamp: new Date(),
     };
 
-    const sshKey = process.env.SSH_PRIVATE_KEY;
+    // Load SSH key - support both direct key and path to key file
+    let sshKey = process.env.SSH_PRIVATE_KEY;
+
+    if (!sshKey && process.env.SSH_PRIVATE_KEY_PATH) {
+      try {
+        const fs = await import('fs');
+        sshKey = fs.readFileSync(process.env.SSH_PRIVATE_KEY_PATH, 'utf8');
+      } catch (err) {
+        result.details.error = `Failed to read SSH key from file: ${(err as Error).message}`;
+        return result;
+      }
+    }
 
     if (!sshKey) {
-      result.details.error = "SSH key not configured";
+      result.details.error = "SSH key not configured (set SSH_PRIVATE_KEY or SSH_PRIVATE_KEY_PATH)";
       return result;
     }
 

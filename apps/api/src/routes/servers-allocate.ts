@@ -19,6 +19,7 @@ async function configureNanobot(
   ssh: SSHClient,
   botToken: string,
   model: string,
+  dropletOpenRouterKey?: string,
   onProgress?: ProgressCallback
 ): Promise<void> {
   const log = (msg: string, type: 'info' | 'success' | 'error' | 'warning' = 'info') => {
@@ -79,7 +80,7 @@ async function configureNanobot(
 
   if (nanobotProvider === 'openrouter') {
     config.providers.openrouter = {
-      apiKey: process.env.OPENROUTER_API_KEY || ''
+      apiKey: dropletOpenRouterKey || process.env.OPENROUTER_API_KEY || ''
     };
   } else if (nanobotProvider === 'anthropic') {
     config.providers.anthropic = {
@@ -168,6 +169,7 @@ async function configureOpenClaw(
   ssh: SSHClient,
   botToken: string,
   model: string,
+  dropletOpenRouterKey?: string,
   onProgress?: ProgressCallback
 ): Promise<void> {
   const log = (msg: string, type: 'info' | 'success' | 'error' | 'warning' = 'info') => {
@@ -539,13 +541,14 @@ allocateRoutes.post('/:id/configure-telegram', authMiddleware, async (c) => {
         // Configure based on stack type
         // Get model from server record or config
         const model = server.model || (server.config as any)?.model || 'minimax/minimax-m2.5';
+        const dropletOpenRouterKey = (server.config as any)?.openrouterKey;
 
         if (stack === 'nanobot') {
-          await configureNanobot(ssh, botToken, model);
+          await configureNanobot(ssh, botToken, model, dropletOpenRouterKey);
           dropletConfigured = true;
           console.log(`[Nanobot] Successfully configured model ${model} and Telegram bot on droplet`);
         } else if (stack === 'openclaw') {
-          await configureOpenClaw(ssh, botToken, model);
+          await configureOpenClaw(ssh, botToken, model, dropletOpenRouterKey);
           dropletConfigured = true;
           console.log(`[OpenClaw] Successfully configured model ${model} and Telegram bot on droplet`);
         }
@@ -781,11 +784,14 @@ allocateRoutes.get('/:id/configure-telegram/stream', authMiddleware, async (c) =
 
             await log(`Configuring AI model: ${model}`, 'info');
 
+            // Get droplet-specific OpenRouter key if available
+            const dropletOpenRouterKey = (server.config as any)?.openrouterKey;
+
             // Configure based on stack type
             if (stack === 'nanobot') {
-              await configureNanobot(ssh, botToken, model, log);
+              await configureNanobot(ssh, botToken, model, dropletOpenRouterKey, log);
             } else if (stack === 'openclaw') {
-              await configureOpenClaw(ssh, botToken, model, log);
+              await configureOpenClaw(ssh, botToken, model, dropletOpenRouterKey, log);
             }
 
             dropletConfigured = true;

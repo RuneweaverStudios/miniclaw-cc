@@ -302,6 +302,31 @@ export class OpenRouterService {
       config: JSON.parse(configStr) as OpenRouterConfig,
     }));
   }
+
+  /**
+   * Revoke a droplet's OpenRouter key (for deallocation)
+   * Removes the key from Redis, making it invalid
+   */
+  async revokeDropletKey(dropletId: number): Promise<boolean> {
+    try {
+      // Get the key for this droplet
+      const key = await this.getDropletKey(dropletId);
+      if (!key) {
+        console.log(`[OpenRouter] No key found for droplet ${dropletId}, skipping revocation`);
+        return false;
+      }
+
+      // Remove from both storage locations
+      await redis.del(`openrouter:droplet:${dropletId}`);
+      await redis.hdel(`openrouter:keys`, key);
+
+      console.log(`[OpenRouter] Revoked key ${key} for droplet ${dropletId}`);
+      return true;
+    } catch (error) {
+      console.error(`[OpenRouter] Failed to revoke key for droplet ${dropletId}:`, error);
+      return false;
+    }
+  }
 }
 
 export const openrouterService = new OpenRouterService();

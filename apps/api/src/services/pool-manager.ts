@@ -28,15 +28,8 @@ export class PoolManager {
    * Get current pool metrics
    */
   async getMetrics(): Promise<PoolMetrics> {
-    const keys = await this.redis.keys("pool:server:*");
-
-    const servers: PoolServerConfig[] = [];
-    for (const key of keys) {
-      const data = await this.redis.get(key);
-      if (data) {
-        servers.push(JSON.parse(data));
-      }
-    }
+    // Use getServers() to avoid duplicate counting
+    const servers = await this.getServers();
 
     const metrics: PoolMetrics = {
       totalServers: servers.length,
@@ -98,7 +91,9 @@ export class PoolManager {
    * Get all servers in pool (optionally filtered by state)
    */
   async getServers(state?: PoolState): Promise<PoolServerConfig[]> {
-    const pattern = state ? `pool:server:${state}:*` : `pool:server:*`;
+    // When filtering by state, use state-specific keys
+    // When getting all servers, only use id keys to avoid duplicates
+    const pattern = state ? `pool:server:${state}:*` : `pool:server:id:*`;
     const keys = await this.redis.keys(pattern);
 
     const servers: PoolServerConfig[] = [];

@@ -2,6 +2,7 @@
  * Pool Sync Worker - Periodically syncs pool state with DigitalOcean
  *
  * This ensures the pool doesn't have stale entries for destroyed droplets
+ * and adds new droplets that are in DO but missing from Redis
  */
 
 import { createWorker } from "../lib/queue.js";
@@ -9,7 +10,7 @@ import { poolManager } from "../services/pool-manager.js";
 
 /**
  * Sync pool state with DigitalOcean API
- * Removes droplets from pool that no longer exist
+ * Adds missing droplets and removes droplets that no longer exist
  */
 async function syncPoolWithDigitalOcean(): Promise<void> {
   try {
@@ -33,17 +34,23 @@ async function syncPoolWithDigitalOcean(): Promise<void> {
     }
 
     const data = await response.json();
-    const activeDropletIds = new Set(
-      data.droplets.map((d: any) => d.id)
+    const allDroplets = data.droplets || [];
+
+    // Filter to pool droplets only
+    const poolDroplets = allDroplets.filter((d: any) =>
+      (d.tags && d.tags.includes("pool")) ||
+      (d.tags && d.tags.includes("pool-server")) ||
+      (d.name && d.name.includes("pool-"))
     );
 
-    console.log(`[PoolSync] Found ${activeDropletIds.size} active droplets on DigitalOcean`);
+    const activeDropletIds = new Set(poolDroplets.map((d: any) => d.id));
+    const poolServerIds = new Set((await poolManager.getServers()).map((s) => s.dropletId));
 
-    // Get all pool servers
-    const poolServers = await poolManager.getServers();
+    console.log(`[PoolSync] Found ${poolDroplets.length} pool droplets on DigitalOcean`);
+
+    // Remove dead droplets from pool
     let removedCount = 0;
-
-    for (const server of poolServers) {
+    for (const server of await poolManager.getServers()) {
       if (!activeDropletIds.has(server.dropletId)) {
         console.warn(`[PoolSync] Droplet ${server.dropletId} (${server.ipAddress}) no longer exists, removing from pool`);
         await poolManager.removeServer(server.dropletId);
@@ -53,7 +60,55 @@ async function syncPoolWithDigitalOcean(): Promise<void> {
 
     if (removedCount > 0) {
       console.log(`[PoolSync] Removed ${removedCount} dead droplets from pool`);
-    } else {
+    }
+
+    // Add missing droplets to pool
+    let addedCount = 0;
+    for (const droplet of poolDroplets) {
+      if (!poolServerIds.has(droplet.id)) {
+        const ip = droplet.networks?.v4?.find((n: any) => n.type === "public")?.ip_address;
+        if (!ip) {
+          console.warn(`[PoolSync] Droplet ${droplet.id} (${droplet.name}) has no public IP, skipping`);
+          continue;
+        }
+
+        // Determine stack from tags/name
+        const isOpenClaw = (droplet.tags && droplet.tags.includes("openclaw")) ||
+                           (droplet.name && droplet.name.includes("openclaw"));
+        const stack: "nanobot" | "openclaw" = isOpenClaw ? "openclaw" : "nanobot";
+        const stackVersion = stack === "nanobot" ? "0.1.3.post7" : "1.0.0";
+
+        // Determine state from status
+        const state = droplet.status === "active" ? "standby" : "provisioning";
+
+        await poolManager.addServer({
+          dropletId: droplet.id,
+          dropletName: droplet.name,
+          ipAddress: ip,
+          region: droplet.region?.slug || "nyc1",
+          size: droplet.size?.slug || "s-1vcpu-1gb",
+          stack,
+          stackVersion,
+          state,
+          healthStatus: "pending",
+          stateChangedAt: new Date(droplet.created_at),
+          config: {
+            monitoringEnabled: false,
+            alertsEnabled: false,
+            backupEnabled: false,
+          },
+        });
+
+        console.log(`[PoolSync] Added droplet ${droplet.id} (${droplet.name}) to pool as ${state}`);
+        addedCount++;
+      }
+    }
+
+    if (addedCount > 0) {
+      console.log(`[PoolSync] Added ${addedCount} missing droplets to pool`);
+    }
+
+    if (removedCount === 0 && addedCount === 0) {
       console.log("[PoolSync] Pool sync complete - all droplets verified");
     }
 

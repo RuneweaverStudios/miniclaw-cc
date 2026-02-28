@@ -235,29 +235,11 @@ authRoutes.post('/sync', async (c) => {
     const { email, name, avatar, provider, providerId } = body;
 
     const db = getDb();
-
-    // Check if user exists
-    const existingUsers = await db.select().from(users).where(eq(users.email, email)).limit(1);
-
-    let user;
     const now = new Date();
 
-    if (existingUsers.length > 0) {
-      // Update existing user
-      const updated = await db.update(users)
-        .set({
-          lastLoginAt: now,
-          ...(avatar && { avatar }),
-          ...(provider && { provider }),
-          ...(providerId && { providerId }),
-        })
-        .where(eq(users.email, email))
-        .returning();
-
-      user = updated[0];
-    } else {
-      // Create new user
-      const newUser = await db.insert(users).values({
+    // Use upsert to handle race conditions from double-invoked useEffect
+    const result = await db.insert(users)
+      .values({
         email,
         name: name || email.split('@')[0],
         avatar,
@@ -267,10 +249,20 @@ authRoutes.post('/sync', async (c) => {
         planStatus: 'trial',
         status: 'active',
         lastLoginAt: now,
-      }).returning();
+      })
+      .onConflictDoUpdate({
+        target: users.email,
+        set: {
+          lastLoginAt: now,
+          ...(avatar && { avatar: (avatar as any) }),
+          ...(provider && { provider: (provider as any) }),
+          ...(providerId && { providerId: (providerId as any) }),
+          name: name || email.split('@')[0], // Update name if provided
+        },
+      })
+      .returning();
 
-      user = newUser[0];
-    }
+    const user = result[0];
 
     // Generate JWT token for our API
     const token = auth.generateToken({

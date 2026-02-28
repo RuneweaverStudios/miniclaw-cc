@@ -114,10 +114,8 @@ export class Allocator {
 
       await poolManager.addServer(server);
 
-      // Record allocation in database and Redis
-      await this.recordAllocation(userId, server.dropletId, server);
-
-      // Create OpenRouter API key for this droplet
+      // Create OpenRouter API key for this droplet BEFORE recording allocation
+      // This ensures the key is in server.config when stored to database
       try {
         const openrouterKey = await openrouterService.createDropletKey(server.dropletId);
         console.log(`[Allocator] Created OpenRouter key ${openrouterKey} for droplet ${server.dropletId}`);
@@ -131,6 +129,9 @@ export class Allocator {
         console.error(`[Allocator] Failed to create OpenRouter key for droplet ${server.dropletId}:`, error);
         // Don't fail allocation if OpenRouter key creation fails
       }
+
+      // Record allocation in database and Redis (now includes openrouterKey in config)
+      await this.recordAllocation(userId, server.dropletId, server);
 
       console.log(`[Allocator] Allocated server ${server.dropletId} to user ${userId}`);
 

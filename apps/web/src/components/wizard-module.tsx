@@ -69,6 +69,21 @@ function ModelIcon({ type }: { type: 'claude' | 'openai' | 'minimax' | 'kimi' })
       <span className={`${className} rounded bg-rose-600 px-1 text-[10px] font-bold text-white`} aria-hidden>K</span>
     );
   }
+  if (type === 'glm') {
+    return (
+      <span className={`${className} rounded bg-blue-600 px-1 text-[10px] font-bold text-white`} aria-hidden>G</span>
+    );
+  }
+  if (type === 'qwen') {
+    return (
+      <span className={`${className} rounded bg-purple-600 px-1 text-[10px] font-bold text-white`} aria-hidden>Q</span>
+    );
+  }
+  if (type === 'moonshot') {
+    return (
+      <span className={`${className} rounded bg-rose-600 px-1 text-[10px] font-bold text-white`} aria-hidden>K</span>
+    );
+  }
   return null;
 }
 
@@ -127,6 +142,26 @@ const FEATURED_MODELS = [
     output_per_million_cents: 13, // Base price
   },
   {
+    id: 'moonshotai/kimi-k2.5',
+    name: 'Kimi K2.5',
+    icon: 'moonshot' as const,
+    tag: 'Top Ranked',
+    blurb: '#1 ranked on OpenRouter, excellent for long documents',
+    // OpenRouter: ~$0.30/M in, ~$1.50/M out → 1.5X = $0.45/M, $2.25/M
+    input_per_million_cents: 30,
+    output_per_million_cents: 150,
+  },
+  {
+    id: 'qwen/qwen3.5-flash-02-23',
+    name: 'Qwen 3.5 Flash',
+    icon: 'qwen' as const,
+    tag: 'Ultra Fast',
+    blurb: 'Incredibly fast, great for Chinese and English',
+    // OpenRouter: ~$0.10/M in, ~$0.30/M out → 1.5X = $0.15/M, $0.45/M
+    input_per_million_cents: 10,
+    output_per_million_cents: 30,
+  },
+  {
     id: 'anthropic/claude-sonnet-4',
     name: 'Claude Sonnet 4',
     icon: 'claude' as const,
@@ -137,6 +172,16 @@ const FEATURED_MODELS = [
     output_per_million_cents: 1500, // Base price
   },
   {
+    id: 'z-ai/glm-5',
+    name: 'GLM-5',
+    icon: 'glm' as const,
+    tag: 'Chinese Powerhouse',
+    blurb: 'Strong programming capabilities, cost-effective',
+    // OpenRouter: ~$0.50/M in, ~$1.70/M out → 1.5X = $0.75/M, $2.55/M
+    input_per_million_cents: 50,
+    output_per_million_cents: 170,
+  },
+  {
     id: 'openai/gpt-4o',
     name: 'GPT-4o',
     icon: 'openai' as const,
@@ -145,6 +190,27 @@ const FEATURED_MODELS = [
     // OpenRouter base: $2.50/M in, $10/M out → 1.5X = $3.75/M, $15/M
     input_per_million_cents: 250, // Base price
     output_per_million_cents: 1000, // Base price
+  },
+  {
+    id: 'anthropic/claude-opus-4.5',
+    name: 'Claude Opus 4.5',
+    icon: 'claude' as const,
+    tag: 'Premium',
+    blurb: 'Top-tier coding and reasoning',
+    // OpenRouter base: ~$5/M in, ~$25/M out → 1.5X = $7.50/M, $37.50/M
+    input_per_million_cents: 500,
+    output_per_million_cents: 2500,
+  },
+  {
+    id: 'openai/gpt-oss-120b',
+    name: 'GPT-OSS 120B',
+    icon: 'openai' as const,
+    tag: 'Experimental',
+    experimental: true,
+    blurb: 'Large open-source model, experimental',
+    // OpenRouter: ~$0.80/M in, ~$0.80/M out → 1.5X = $1.20/M, $1.20/M
+    input_per_million_cents: 80,
+    output_per_million_cents: 80,
   },
 ] as const;
 
@@ -171,6 +237,7 @@ export function WizardModule() {
   const [channelId, setChannelId] = useState<string>('telegram');
   const [loaded, setLoaded] = useState(false);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const [showPremiumWarning, setShowPremiumWarning] = useState(false);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
 
   const modelOptions: ModelOption[] = FEATURED_MODELS.map((m) => ({
@@ -210,6 +277,19 @@ export function WizardModule() {
 
   const handleModel = (id: string) => {
     setModelId(id);
+
+    // Check if this is a premium model
+    const model = FEATURED_MODELS.find(m => m.id === id);
+    if (model) {
+      const priceSum = model.input_per_million_cents + model.output_per_million_cents;
+      const isPremium = priceSum >= 400; // Premium threshold
+
+      if (isPremium) {
+        setShowPremiumWarning(true);
+      } else {
+        setShowPremiumWarning(false);
+      }
+    }
   };
 
   const handleGoogleSignIn = async () => {
@@ -278,11 +358,31 @@ export function WizardModule() {
           })}
         </div>
 
-        {/* Model selection – dropdown sorted cheapest to most expensive */}
-        <h3 className="mt-8 text-base font-medium text-white">Which model do you want as default?</h3>
+        {/* Model selection – improved with categories */}
+        <h3 className="mt-8 text-base font-medium text-white">Choose your AI model</h3>
         <p className="mt-1 text-xs text-zinc-400">
-          Sorted by cost (cheapest first). All support tool calling.
+          All prices include MiniClaw's infrastructure fee. Select based on your needs and budget.
         </p>
+
+        {/* Pricing tier quick reference */}
+        <div className="mt-3 grid grid-cols-3 gap-2 rounded-lg border border-zinc-700/50 bg-zinc-800/30 p-3">
+          <div className="text-center">
+            <div className="text-[10px] text-zinc-500 uppercase tracking-wide">Budget</div>
+            <div className="mt-1 text-sm font-semibold text-emerald-400">$0.15-$0.45/M</div>
+            <div className="text-[10px] text-zinc-600">Simple tasks, fast responses</div>
+          </div>
+          <div className="text-center">
+            <div className="text-[10px] text-zinc-500 uppercase tracking-wide">Balanced</div>
+            <div className="mt-1 text-sm font-semibold text-sky-400">$0.75-$4.50/M</div>
+            <div className="text-[10px] text-zinc-600">Most workflows, best value</div>
+          </div>
+          <div className="text-center">
+            <div className="text-[10px] text-zinc-500 uppercase tracking-wide">Premium</div>
+            <div className="mt-1 text-sm font-semibold text-purple-400">$7.50-$37.50/M</div>
+            <div className="text-[10px] text-zinc-600">Complex reasoning, coding</div>
+          </div>
+        </div>
+
         <div className="mt-4 relative" ref={modelDropdownRef}>
           <button
             type="button"
@@ -294,6 +394,11 @@ export function WizardModule() {
               <div className="min-w-0 flex-1">
                 <span className="text-sm font-medium text-white">{selectedModel?.name ?? 'Select model'}</span>
                 <span className="ml-2 text-xs text-zinc-400">{selectedModel?.tag ?? ''}</span>
+                {(selectedModel as any)?.experimental && (
+                  <span className="ml-2 inline-flex items-center rounded-md bg-amber-500/25 px-2 py-0.5 text-xs font-semibold text-amber-300 ring-1 ring-amber-400/50">
+                    ⚠ Experimental
+                  </span>
+                )}
                 {selectedModel?.recommended && (
                   <span className="ml-2 inline-flex items-center rounded-md bg-emerald-500/25 px-2 py-0.5 text-xs font-semibold text-emerald-300 ring-1 ring-emerald-400/50">
                     ★ Recommended
@@ -308,9 +413,12 @@ export function WizardModule() {
             </div>
           </button>
           {modelDropdownOpen && (
-            <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-[min(20rem,70vh)] overflow-auto rounded-xl border border-zinc-700 bg-zinc-900 shadow-xl">
-              {sortedModelOptions.map((m) => {
+            <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-[min(28rem,70vh)] overflow-auto rounded-xl border border-zinc-700 bg-zinc-900 shadow-xl">
+              {sortedModelOptions.map((m, idx) => {
                 const selected = modelId === m.id;
+                const priceSum = m.input_per_million_cents + m.output_per_million_cents;
+                const tier = priceSum < 100 ? 'budget' : priceSum < 400 ? 'balanced' : 'premium';
+
                 return (
                   <button
                     key={m.id}
@@ -327,9 +435,21 @@ export function WizardModule() {
                       <div className="flex items-center gap-2">
                         <ModelIcon type={m.icon} />
                         <span className="text-sm font-medium text-white">{m.name}</span>
-                        <span className="text-xs text-zinc-400">{m.tag}</span>
+                        <span className={`text-[10px] rounded px-1.5 py-0.5 font-medium ${
+                          tier === 'budget' ? 'bg-emerald-500/20 text-emerald-400' :
+                          tier === 'balanced' ? 'bg-sky-500/20 text-sky-400' :
+                          'bg-purple-500/20 text-purple-400'
+                        }`}>
+                          {tier === 'budget' ? '$' : tier === 'balanced' ? '$$' : '$$$'}
+                        </span>
+                        <span className="text-xs text-zinc-500">{m.tag}</span>
+                        {(m as any).experimental && (
+                          <span className="inline-flex items-center rounded-md bg-amber-500/25 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300 ring-1 ring-amber-400/50">
+                            ⚠ Experimental
+                          </span>
+                        )}
                         {m.recommended && (
-                          <span className="inline-flex items-center rounded-md bg-emerald-500/25 px-2 py-0.5 text-xs font-semibold text-emerald-300 ring-1 ring-emerald-400/50">
+                          <span className="inline-flex items-center rounded-md bg-emerald-500/25 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300 ring-1 ring-emerald-400/50">
                             ★ Recommended
                           </span>
                         )}
@@ -340,10 +460,39 @@ export function WizardModule() {
                       <p className="text-xs font-medium text-emerald-300/95">{m.recommendedBlurb}</p>
                     )}
                     <p className="text-xs text-zinc-500">{m.blurb}</p>
-                    <p className="text-xs text-zinc-600">{m.pricingLine}</p>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="font-medium text-zinc-400">{m.pricingLine}</span>
+                      <span className="text-zinc-600">•</span>
+                      <span className="text-zinc-600">Tool calling supported</span>
+                    </div>
                   </button>
                 );
               })}
+            </div>
+          )}
+
+          {/* Premium Model Warning */}
+          {showPremiumWarning && (
+            <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+              <div className="flex gap-3">
+                <span className="text-2xl" aria-hidden>💡</span>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-amber-200">Premium model selected</p>
+                  <p className="mt-1 text-xs text-amber-300/80">
+                    Your subscription includes <span className="font-semibold text-amber-200">$25/month in tokens</span>. Premium models like {selectedModel?.name} cost more per token, so your included balance may run out faster.
+                  </p>
+                  <p className="mt-1 text-xs text-amber-300/80">
+                    No worries! You can <span className="font-semibold text-amber-200">purchase additional tokens</span> or <span className="font-semibold text-amber-200">switch models anytime</span> from your dashboard.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowPremiumWarning(false)}
+                    className="mt-2 text-xs font-medium text-amber-400 underline hover:text-amber-300"
+                  >
+                    Got it, dismiss
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>

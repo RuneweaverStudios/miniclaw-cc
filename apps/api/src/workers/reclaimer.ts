@@ -8,6 +8,8 @@
  */
 
 import { poolManager } from "../services/pool-manager.js";
+import { clearServerConfiguration } from "../services/server-cleanup.js";
+import { openrouterService } from "../services/openrouter.js";
 import type { PoolServerConfig } from "@miniclaw/shared";
 
 export interface ReclaimerOptions {
@@ -175,31 +177,34 @@ export class Reclaimer {
       // TODO: Send notification to user
       // TODO: Backup user data if needed
 
-      // Get server details before removing from pool
+      // Get server details before reclaiming
       const server = await poolManager.getServer(expiry.dropletId);
       if (!server) {
         console.warn(`[Reclaimer] Server ${expiry.dropletId} not found in pool`);
         return;
       }
 
-      // Release server back to pool or destroy
-      await poolManager.removeServer(expiry.dropletId);
+      console.log(`[Reclaimer] Cleaning up server ${expiry.dropletId} before returning to pool...`);
 
-      // Queue reclamation job
-      const { getReclaimQueue } = await import("../lib/queue.js");
-      const queue = getReclaimQueue();
+      // Clear Telegram configuration and other user data
+      const cleanupResult = await clearServerConfiguration(server);
 
-      await queue.add(
-        {
-          dropletId: expiry.dropletId,
-          userId: expiry.userId,
-          ipAddress: server.ipAddress || "",
-          stack: server.stack,
-        },
-        {
-          jobId: `reclaim-${expiry.dropletId}`,
-        }
-      );
+      if (!cleanupResult.success) {
+        console.warn(`[Reclaimer] Cleanup had issues but continuing: ${cleanupResult.message}`);
+      }
+
+      // Revoke the OpenRouter API key for this droplet
+      console.log(`[Reclaimer] Revoking OpenRouter API key for droplet ${expiry.dropletId}...`);
+      await openrouterService.revokeDropletKey(expiry.dropletId);
+      console.log(`[Reclaimer] OpenRouter API key revoked for droplet ${expiry.dropletId}`);
+
+      // Return server to pool as standby + healthy (not removed)
+      await poolManager.updateServerState(expiry.dropletId, 'standby', 'healthy');
+
+      // Clear user allocation info
+      await poolManager.releaseAllocation(expiry.userId, expiry.dropletId, false);
+
+      console.log(`[Reclaimer] Server ${expiry.dropletId} returned to pool as standby+healthy`);
 
     } catch (error) {
       console.error(`[Reclaimer] Failed to reclaim server ${expiry.dropletId}:`, error);
