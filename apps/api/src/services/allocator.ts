@@ -10,6 +10,8 @@ import { poolManager } from "./pool-manager.js";
 import { redis } from "../lib/redis.js";
 import { randomBytes } from "crypto";
 import { openrouterService } from "./openrouter.js";
+import { db } from "../lib/db/index.js";
+import { userServers } from "../db/schema.js";
 
 /**
  * Allocation request
@@ -104,8 +106,8 @@ export class Allocator {
 
       await poolManager.addServer(server);
 
-      // Record allocation
-      await this.recordAllocation(userId, server.dropletId);
+      // Record allocation in database and Redis
+      await this.recordAllocation(userId, server.dropletId, server);
 
       // Create OpenRouter API key for this droplet
       try {
@@ -276,10 +278,39 @@ export class Allocator {
   }
 
   /**
-   * Record allocation in database
+   * Record allocation in database and Redis
    */
-  private async recordAllocation(userId: string, dropletId: number): Promise<void> {
-    // TODO: Store in database via Drizzle
+  private async recordAllocation(userId: string, dropletId: number, server: PoolServerConfig): Promise<void> {
+    try {
+      // Insert into database
+      await db.insert(userServers).values({
+        userId,
+        dropletId,
+        hostname: server.dropletName,
+        stack: server.stack,
+        stackVersion: server.stackVersion,
+        region: server.region,
+        size: server.size,
+        ipAddress: server.ipAddress,
+        sshPort: server.sshPort || 22,
+        status: 'active',
+        allocatedAt: new Date(),
+        healthStatus: server.healthStatus || 'unknown',
+        config: server.config || {
+          monitoringEnabled: false,
+          alertsEnabled: false,
+          backupEnabled: false,
+          customDomains: [],
+          environmentVariables: {},
+        },
+      });
+      console.log(`[Allocator] Recorded allocation in database for droplet ${dropletId}`);
+    } catch (error) {
+      console.error(`[Allocator] Failed to record allocation in database:`, error);
+      // Don't fail allocation if database insert fails
+    }
+
+    // Also store in Redis for quick lookup
     await this.redis.hset("allocations", `${userId}:${dropletId}`, Date.now().toString());
   }
 

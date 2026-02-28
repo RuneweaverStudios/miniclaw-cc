@@ -58,17 +58,23 @@ export function DeployWizard() {
         try {
           const server = JSON.parse(deployedServer);
           console.log('[DeployWizard] Found deployed server in localStorage:', server);
+          console.log('[DeployWizard] Server dropletId:', server.dropletId);
+          console.log('[DeployWizard] Server ipAddress:', server.ipAddress);
+          console.log('[DeployWizard] Server framework:', server.framework, 'stack:', server.stack);
           // Set up the allocation with the deployed server
-          setAllocation({
+          const allocationData = {
             dropletId: server.dropletId,
             name: server.dropletName || server.name,
             ipAddress: server.ipAddress,
-            status: 'ready',
+            status: 'ready' as const,
             framework: server.framework || server.stack,
             model: server.model || localStorage.getItem('wizard_model') || 'minimax/minimax-m2.5',
             channel: server.channel || localStorage.getItem('wizard_channel') || 'telegram',
-          });
+          };
+          console.log('[DeployWizard] Setting allocation:', allocationData);
+          setAllocation(allocationData);
           // Skip directly to Telegram pairing step (step 4)
+          console.log('[DeployWizard] Setting step to 4 (Telegram pairing)');
           setStep(4);
           // Clear the temp storage so we don't re-use it on revisit
           localStorage.removeItem('deployed_server');
