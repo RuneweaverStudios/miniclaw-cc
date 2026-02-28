@@ -49,6 +49,32 @@ export function DeployWizard() {
     return null;
   }
 
+  // Check if server was already allocated during checkout
+  useEffect(() => {
+    const deployedServer = localStorage.getItem('deployed_server');
+    if (deployedServer) {
+      try {
+        const server = JSON.parse(deployedServer);
+        // Set up the allocation with the deployed server
+        setAllocation({
+          dropletId: server.dropletId,
+          name: server.dropletName || server.name,
+          ipAddress: server.ipAddress,
+          status: 'ready',
+          framework: server.stack,
+          model: localStorage.getItem('wizard_model') || 'minimax/minimax-m2.5',
+          channel: localStorage.getItem('wizard_channel') || 'telegram',
+        });
+        // Skip directly to Telegram pairing step (step 4)
+        setStep(4);
+        // Clear the temp storage so we don't re-use it on revisit
+        localStorage.removeItem('deployed_server');
+      } catch (error) {
+        console.error('Failed to parse deployed server:', error);
+      }
+    }
+  }, []);
+
   const handleAllocateDroplet = async () => {
     setLoading(true);
     setError('');

@@ -39,10 +39,10 @@ export function CheckoutSuccess() {
           localStorage.setItem('subscription', JSON.stringify(subscription));
           setDeploying(false);
 
-          // Redirect to dashboard after 3 seconds
+          // Redirect to deploy wizard for bot allocation and Telegram pairing
           setTimeout(() => {
-            navigate('/dashboard');
-          }, 3000);
+            navigate('/deploy');
+          }, 2000);
         } else {
           console.error('Failed to process checkout');
           setDeploying(false);
@@ -80,7 +80,7 @@ export function CheckoutSuccess() {
             </div>
             <div>
               <h1 className="text-3xl font-bold">Payment Successful!</h1>
-              <p className="mt-2 text-zinc-400">Your server is being deployed. You'll be redirected to your dashboard shortly.</p>
+              <p className="mt-2 text-zinc-400">Your server is ready! Continuing to setup...</p>
             </div>
           </div>
         )}
