@@ -158,6 +158,7 @@ billingRoutes.post('/checkout-success', zValidator('json', checkoutSuccessSchema
       stack: selectedFramework as 'nanobot' | 'openclaw',
       region: 'nyc1',
       userId: user.userId,
+      model: selectedModel, // Pass selected model to allocator
     });
 
     if (!allocation.success) {

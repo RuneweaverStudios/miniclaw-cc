@@ -537,8 +537,8 @@ allocateRoutes.post('/:id/configure-telegram', authMiddleware, async (c) => {
         });
 
         // Configure based on stack type
-        // Get model from config or use default
-        const model = (server.config as any)?.model || 'openrouter/anthropic/claude-opus-4-5';
+        // Get model from server record or config
+        const model = server.model || (server.config as any)?.model || 'minimax/minimax-m2.5';
 
         if (stack === 'nanobot') {
           await configureNanobot(ssh, botToken, model);
@@ -570,7 +570,7 @@ allocateRoutes.post('/:id/configure-telegram', authMiddleware, async (c) => {
     };
 
     // Get model from server record or use a default
-    const model = server.model || 'openrouter/anthropic/claude-opus-4-5';
+    const model = server.model || (server.config as any)?.model || 'minimax/minimax-m2.5';
 
     await db.update(userServers)
       .set({
@@ -777,7 +777,9 @@ allocateRoutes.get('/:id/configure-telegram/stream', authMiddleware, async (c) =
             await log('SSH connection established', 'success');
 
             // Get model from config
-            const model = (server.config as any)?.model || server.model || 'openrouter/anthropic/claude-opus-4-5';
+            const model = server.model || (server.config as any)?.model || 'minimax/minimax-m2.5';
+
+            await log(`Configuring AI model: ${model}`, 'info');
 
             // Configure based on stack type
             if (stack === 'nanobot') {
@@ -809,7 +811,7 @@ allocateRoutes.get('/:id/configure-telegram/stream', authMiddleware, async (c) =
           environmentVariables: {},
         };
 
-        const model = server.model || 'openrouter/anthropic/claude-opus-4-5';
+        const model = server.model || (server.config as any)?.model || 'minimax/minimax-m2.5';
 
         await db.update(userServers)
           .set({

@@ -21,6 +21,7 @@ export interface AllocationRequest {
   stack: StackType;
   region?: string;
   hostname?: string;
+  model?: string; // User's selected model (e.g., 'minimax/minimax-m2.5')
 }
 
 /**
@@ -103,6 +104,13 @@ export class Allocator {
       server.allocatedTo = userId;
       server.state = "allocated";
       server.stateChangedAt = new Date();
+
+      // Store model in server config
+      const model = request.model || 'minimax/minimax-m2.5';
+      server.config = {
+        ...server.config,
+        model,
+      };
 
       await poolManager.addServer(server);
 
@@ -284,6 +292,10 @@ export class Allocator {
     try {
       // Insert into database
       const db = getDb();
+
+      // Get model from server config (set during allocation)
+      const model = server.config?.model || 'minimax/minimax-m2.5';
+
       await db.insert(userServers).values({
         userId,
         dropletId,
@@ -297,6 +309,7 @@ export class Allocator {
         status: 'active',
         allocatedAt: new Date(),
         healthStatus: server.healthStatus || 'unknown',
+        model, // Store model in database
         config: server.config || {
           monitoringEnabled: false,
           alertsEnabled: false,
@@ -305,7 +318,7 @@ export class Allocator {
           environmentVariables: {},
         },
       });
-      console.log(`[Allocator] Recorded allocation in database for droplet ${dropletId}`);
+      console.log(`[Allocator] Recorded allocation in database for droplet ${dropletId} with model ${model}`);
     } catch (error) {
       console.error(`[Allocator] Failed to record allocation in database:`, error);
       // Don't fail allocation if database insert fails

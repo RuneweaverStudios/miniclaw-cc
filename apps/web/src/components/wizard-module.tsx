@@ -112,8 +112,9 @@ const FEATURED_MODELS = [
     recommended: true,
     blurb: 'Best value for extended agent workloads',
     recommendedBlurb: 'Recommended for most users - great balance of cost and capability',
-    input_per_million_cents: 30,
-    output_per_million_cents: 110,
+    // OpenRouter base: ~$0.20/M in, ~$0.60/M out → 1.5X markup = $0.30/M, $0.90/M
+    input_per_million_cents: 20, // Base price (without 1.5X markup)
+    output_per_million_cents: 60, // Base price (without 1.5X markup)
   },
   {
     id: 'anthropic/claude-3.5-haiku',
@@ -121,8 +122,9 @@ const FEATURED_MODELS = [
     icon: 'claude' as const,
     tag: 'Fast',
     blurb: 'Lightning-fast for simple tasks',
-    input_per_million_cents: 25,
-    output_per_million_cents: 125,
+    // OpenRouter base: ~$0.025/M in, ~$0.125/M out via haiku → 1.5X = $0.038/M, $0.19/M
+    input_per_million_cents: 3, // Base price (via openrouter/anthropic/claude-3.5-haiku)
+    output_per_million_cents: 13, // Base price
   },
   {
     id: 'anthropic/claude-sonnet-4',
@@ -130,8 +132,9 @@ const FEATURED_MODELS = [
     icon: 'claude' as const,
     tag: 'Balanced',
     blurb: 'Excellent at coding and complex tasks',
-    input_per_million_cents: 300,
-    output_per_million_cents: 1500,
+    // OpenRouter base: ~$3/M in, ~$15/M out → 1.5X = $4.50/M, $22.50/M
+    input_per_million_cents: 300, // Base price
+    output_per_million_cents: 1500, // Base price
   },
   {
     id: 'openai/gpt-4o',
@@ -139,8 +142,9 @@ const FEATURED_MODELS = [
     icon: 'openai' as const,
     tag: 'Creative',
     blurb: 'Flagship with multimodal capabilities',
-    input_per_million_cents: 200,
-    output_per_million_cents: 800,
+    // OpenRouter base: $2.50/M in, $10/M out → 1.5X = $3.75/M, $15/M
+    input_per_million_cents: 250, // Base price
+    output_per_million_cents: 1000, // Base price
   },
 ] as const;
 

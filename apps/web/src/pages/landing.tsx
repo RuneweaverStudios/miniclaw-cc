@@ -20,22 +20,25 @@ const MODEL_COMPARISON: Array<{
     name: 'MiniMax M2.5',
     pros: ['Best value — tokens last longer', 'Strong for coding and agent workflows', 'Long context, competitive quality'],
     cons: ['Less familiar name than Claude or GPT'],
-    input_per_million_cents: 30,
-    output_per_million_cents: 110,
+    // Base: ~$0.20/M in, ~$0.60/M out (OpenRouter) × 1.5 = $0.30/M, $0.90/M
+    input_per_million_cents: 20,
+    output_per_million_cents: 60,
   },
   {
     id: 'anthropic/claude-3.5-haiku',
     name: 'Claude 3.5 Haiku',
     pros: ['Fast replies', 'Low cost', 'Good for simpler tasks and high volume'],
     cons: ['Less capable on very complex, multi-step reasoning'],
-    input_per_million_cents: 25,
-    output_per_million_cents: 125,
+    // Base via OpenRouter: ~$0.025/M in, ~$0.125/M out × 1.5 = $0.04/M, $0.19/M
+    input_per_million_cents: 3,
+    output_per_million_cents: 13,
   },
   {
     id: 'anthropic/claude-sonnet-4',
     name: 'Claude Sonnet 4',
     pros: ['Strong balance of speed and capability', 'Great for coding and agentic tasks'],
     cons: ['Output tokens cost more; faster burn on long replies'],
+    // Base: ~$3/M in, ~$15/M out (OpenRouter) × 1.5 = $4.50/M, $22.50/M
     input_per_million_cents: 300,
     output_per_million_cents: 1500,
   },
@@ -44,8 +47,9 @@ const MODEL_COMPARISON: Array<{
     name: 'GPT-4o',
     pros: ['Flagship model', 'Creative and agentic', 'Excels at complex multi-step tasks'],
     cons: ['Can burn through tokens quickly on heavy agent loops'],
-    input_per_million_cents: 200,
-    output_per_million_cents: 800,
+    // Base: $2.50/M in, $10/M out (OpenRouter) × 1.5 = $3.75/M, $15/M
+    input_per_million_cents: 250,
+    output_per_million_cents: 1000,
   },
   {
     id: 'moonshotai/kimi-k2.5',

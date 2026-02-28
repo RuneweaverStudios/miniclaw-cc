@@ -30,6 +30,8 @@ export function DeployWizard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [allocationError, setAllocationError] = useState('');
+  const [allocationTimeoutElapsed, setAllocationTimeoutElapsed] = useState(false);
 
   // Telegram configuration states - must be at top level to avoid hooks error
   const [botToken, setBotToken] = useState('');
@@ -120,6 +122,8 @@ export function DeployWizard() {
   const handleAllocateDroplet = async () => {
     setLoading(true);
     setError('');
+    setAllocationError('');
+    setAllocationTimeoutElapsed(false);
     setStep(2);
 
     try {
@@ -151,10 +155,16 @@ export function DeployWizard() {
         setStep(3); // Show activation progress
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to allocate droplet');
-      setStep(1);
-    } finally {
-      setLoading(false);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to allocate droplet';
+      setAllocationError(errorMessage);
+
+      // Stay in loading state for 60 seconds before showing error
+      setTimeout(() => {
+        setAllocationTimeoutElapsed(true);
+        setError(errorMessage);
+        setStep(1);
+        setLoading(false);
+      }, 60000);
     }
   };
 
@@ -332,8 +342,15 @@ export function DeployWizard() {
             </div>
 
             {error && (
-              <div className="mt-6 rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-red-300">
-                {error}
+              <div className="mt-6 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
+                <div className="flex items-start gap-3">
+                  <span className="text-xl">😅</span>
+                  <div>
+                    <p className="font-medium text-amber-200">Oops! Something took longer than expected</p>
+                    <p className="mt-1 text-sm text-amber-300/80">{error}</p>
+                    <p className="mt-2 text-xs text-amber-400/60">Please try again or contact support if this persists.</p>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -365,12 +382,52 @@ export function DeployWizard() {
     return (
       <div className="min-h-screen bg-zinc-950 px-4 py-12">
         <div className="mx-auto max-w-2xl">
-          <div className="rounded-2xl border border-zinc-700/80 bg-zinc-900/80 p-8 shadow-xl text-center">
-            <div className="mx-auto h-16 w-16 animate-spin rounded-full border-4 border-zinc-700 border-t-sky-500" />
-            <h2 className="mt-6 text-xl font-bold text-white">Allocating Pre-installed Droplet</h2>
-            <p className="mt-2 text-zinc-400">
-              Finding a {framework} instance from our standby pool...
+          <div className="rounded-2xl border border-sky-500/30 bg-zinc-900/80 p-8 shadow-xl shadow-sky-500/10 text-center">
+            {/* Cute animated robot/assistant icon */}
+            <div className="mx-auto mb-6 flex justify-center">
+              <div className="relative">
+                <div className="flex gap-2">
+                  <span className="animate-bounce" style={{ animationDelay: '0ms' }}>🤖</span>
+                  <span className="animate-bounce" style={{ animationDelay: '150ms' }}>⚡</span>
+                  <span className="animate-bounce" style={{ animationDelay: '300ms' }}>✨</span>
+                </div>
+                {/* Loading dots */}
+                <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-400" style={{ animationDelay: '0ms' }}></span>
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-400" style={{ animationDelay: '200ms' }}></span>
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-400" style={{ animationDelay: '400ms' }}></span>
+                </div>
+              </div>
+            </div>
+
+            <h2 className="mt-8 text-2xl font-bold text-white">
+              Almost There! 🚀
+            </h2>
+            <p className="mt-3 text-base text-zinc-300">
+              Warming up your {framework === 'nanobot' ? 'Nanobot' : 'OpenClaw'} assistant...
             </p>
+
+            <div className="mt-8 space-y-3 text-left">
+              <div className="flex items-center gap-3 text-sm text-zinc-400">
+                <span className="text-green-400">✓</span>
+                <span>Authenticating your account</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm text-zinc-400">
+                <span className="text-green-400">✓</span>
+                <span>Locating standby pool servers</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-sky-500 border-t-transparent" />
+                <span className="text-zinc-300 animate-pulse">Allocating your personal droplet...</span>
+              </div>
+            </div>
+
+            <div className="mt-8 rounded-lg bg-zinc-800/50 p-4 text-sm text-zinc-400">
+              <p className="flex items-center justify-center gap-2">
+                <span>💡</span>
+                <span>This usually takes just a few seconds!</span>
+              </p>
+            </div>
           </div>
         </div>
       </div>

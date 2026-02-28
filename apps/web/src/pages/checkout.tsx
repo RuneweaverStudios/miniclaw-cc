@@ -5,22 +5,22 @@ const MODEL_INFO: Record<string, { name: string; tag: string; pricing: string }>
   'minimax/minimax-m2.5': {
     name: 'MiniMax M2.5',
     tag: 'Best Value',
-    pricing: '$30/M input · $110/M output'
+    pricing: '$0.30/M input · $0.90/M output' // 1.5X markup from $0.20/$0.60
   },
   'anthropic/claude-3.5-haiku': {
     name: 'Claude 3.5 Haiku',
     tag: 'Fast',
-    pricing: '$25/M input · $125/M output'
+    pricing: '$0.04/M input · $0.19/M output' // 1.5X from $0.025/$0.125
   },
   'anthropic/claude-sonnet-4': {
     name: 'Claude Sonnet 4',
     tag: 'Balanced',
-    pricing: '$300/M input · $1500/M output'
+    pricing: '$4.50/M input · $22.50/M output' // 1.5X from $3/$15
   },
   'openai/gpt-4o': {
     name: 'GPT-4o',
     tag: 'Creative',
-    pricing: '$200/M input · $800/M output'
+    pricing: '$3.75/M input · $15.00/M output' // 1.5X from $2.50/$10
   },
 };
 
@@ -167,7 +167,12 @@ export function Checkout() {
                 <button
                   key={plan}
                   type="button"
-                  onClick={() => setSelectedPlan(plan)}
+                  onClick={() => {
+                    setSelectedPlan(plan);
+                    // Update wizard_framework to match selected plan
+                    localStorage.setItem('wizard_framework', plan);
+                    setFramework(plan);
+                  }}
                   className={`rounded-xl border p-5 text-left transition ${
                     isSelected
                       ? 'border-sky-500 bg-sky-500/10 ring-1 ring-sky-500/50'
