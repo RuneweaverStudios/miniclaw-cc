@@ -12,15 +12,40 @@ const MODEL_INFO: Record<string, { name: string; tag: string; pricing: string }>
     tag: 'Fast',
     pricing: '$0.04/M input · $0.19/M output' // 1.5X from $0.025/$0.125
   },
+  'moonshotai/kimi-k2.5': {
+    name: 'Kimi K2.5',
+    tag: 'Top Ranked',
+    pricing: '$0.45/M input · $2.25/M output' // 1.5X from $0.30/$1.50
+  },
+  'qwen/qwen3.5-flash-02-23': {
+    name: 'Qwen 3.5 Flash',
+    tag: 'Ultra Fast',
+    pricing: '$0.15/M input · $0.45/M output' // 1.5X from $0.10/$0.30
+  },
   'anthropic/claude-sonnet-4': {
     name: 'Claude Sonnet 4',
     tag: 'Balanced',
     pricing: '$4.50/M input · $22.50/M output' // 1.5X from $3/$15
   },
+  'z-ai/glm-5': {
+    name: 'GLM-5',
+    tag: 'Chinese Powerhouse',
+    pricing: '$0.75/M input · $2.55/M output' // 1.5X from $0.50/$1.70
+  },
   'openai/gpt-4o': {
     name: 'GPT-4o',
     tag: 'Creative',
     pricing: '$3.75/M input · $15.00/M output' // 1.5X from $2.50/$10
+  },
+  'anthropic/claude-opus-4.5': {
+    name: 'Claude Opus 4.5',
+    tag: 'Premium',
+    pricing: '$7.50/M input · $37.50/M output' // 1.5X from $5/$25
+  },
+  'openai/gpt-oss-120b': {
+    name: 'GPT-OSS 120B',
+    tag: 'Experimental',
+    pricing: '$1.20/M input · $1.20/M output' // 1.5X from $0.80/$0.80
   },
 };
 
@@ -71,7 +96,11 @@ export function Checkout() {
     setChannel(localStorage.getItem('wizard_channel') || 'telegram');
   }, []);
 
-  const modelDetails = MODEL_INFO[model];
+  const modelDetails = MODEL_INFO[model] || {
+    name: model.split('/').pop()?.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || model,
+    tag: 'Available',
+    pricing: 'Contact for pricing'
+  };
   const frameworkDetails = FRAMEWORK_INFO[framework as keyof typeof FRAMEWORK_INFO];
   const planDetails = PLAN_INFO[selectedPlan];
 
