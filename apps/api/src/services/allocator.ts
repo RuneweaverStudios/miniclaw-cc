@@ -39,7 +39,9 @@ export interface AllocationResult {
  */
 export class Allocator {
   private redis: Redis;
-  private lockTimeout = 30000; // 30 seconds
+  private lockTimeout = 60000; // 60 seconds (increased from 30)
+  private maxLockRetries = 3;
+  private lockRetryDelay = 500; // ms
 
   constructor(redisClient?: Redis) {
     this.redis = redisClient || redis;
@@ -55,10 +57,11 @@ export class Allocator {
 
     console.log(`[Allocator] Allocating ${stack} server to user ${userId}`);
 
-    // Acquire distributed lock
-    const lock = await this.acquireLock(lockKey, lockValue);
+    // Acquire distributed lock with retry logic
+    const lock = await this.acquireLockWithRetry(lockKey, lockValue);
 
     if (!lock) {
+      console.warn(`[Allocator] Failed to acquire lock after ${this.maxLockRetries} retries for ${lockKey}`);
       return {
         success: false,
         allocatedAt: new Date(),
@@ -269,6 +272,38 @@ export class Allocator {
     );
 
     return result === "OK";
+  }
+
+  /**
+   * Acquire distributed lock with retry logic
+   */
+  private async acquireLockWithRetry(key: string, value: string): Promise<boolean> {
+    for (let attempt = 1; attempt <= this.maxLockRetries; attempt++) {
+      const acquired = await this.acquireLock(key, value);
+
+      if (acquired) {
+        if (attempt > 1) {
+          console.log(`[Allocator] Lock acquired on attempt ${attempt}/${this.maxLockRetries}`);
+        }
+        return true;
+      }
+
+      // Check if lock exists and when it will expire
+      const ttl = await this.redis.pttl(key);
+      if (ttl > 0) {
+        console.log(`[Allocator] Lock busy (expires in ${ttl}ms), retry ${attempt}/${this.maxLockRetries}...`);
+      } else {
+        console.log(`[Allocator] Lock acquisition failed (no TTL), retry ${attempt}/${this.maxLockRetries}...`);
+      }
+
+      // Wait before retry with exponential backoff
+      if (attempt < this.maxLockRetries) {
+        const delay = this.lockRetryDelay * Math.pow(2, attempt - 1);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    return false;
   }
 
   /**
