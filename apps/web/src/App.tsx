@@ -3,6 +3,8 @@ import { Landing } from './pages/landing';
 import { Signup } from './pages/auth/signup';
 import { Login } from './pages/auth/login';
 import { AuthCallback } from './pages/auth/callback';
+import { Checkout } from './pages/checkout';
+import { CheckoutSuccess } from './pages/checkout/success';
 import { DeployWizard } from './pages/deploy-wizard';
 import { Dashboard } from './pages/dashboard';
 import { ServerList } from './pages/servers/list';
@@ -68,8 +70,19 @@ export const appRouter = createBrowserRouter([
     element: <AuthCallback />,
   },
   {
+    path: '/checkout',
+    element: <Checkout />,
+    loader: protectedLoader,
+  },
+  {
+    path: '/checkout/success',
+    element: <CheckoutSuccess />,
+    loader: protectedLoader,
+  },
+  {
     path: '/deploy',
     element: <DeployWizard />,
+    loader: protectedLoader,
   },
   {
     path: '/dashboard',

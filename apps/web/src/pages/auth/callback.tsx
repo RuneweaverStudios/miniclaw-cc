@@ -52,7 +52,7 @@ export function AuthCallback() {
             localStorage.setItem('wizard_channel', channel);
 
             setStatus('success');
-            setTimeout(() => navigate('/deploy', { replace: true }), 500);
+            setTimeout(() => navigate('/checkout', { replace: true }), 500);
           } else {
             console.error('Failed to sync user with backend');
             setStatus('error');

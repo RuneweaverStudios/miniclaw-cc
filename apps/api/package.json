@@ -27,6 +27,7 @@
     "jsonwebtoken": "^9.0.2",
     "node-ssh": "^13.2.1",
     "postgres": "^3.4.5",
+    "stripe": "^20.4.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {

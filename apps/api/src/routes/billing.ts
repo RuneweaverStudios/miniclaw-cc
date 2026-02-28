@@ -2,8 +2,37 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { authMiddleware } from '../middleware/auth.js';
+import Stripe from 'stripe';
+import { allocator } from '../services/allocator.js';
+
+// Extend JWTPayload for user metadata
+declare module 'hono' {
+  interface ContextVariableMap {
+    user: {
+      userId: string;
+      email: string;
+      name?: string;
+      metadata?: {
+        stripeCustomerId?: string;
+        plan?: string;
+      };
+    };
+  }
+}
 
 const billingRoutes = new Hono();
+
+// Initialize Stripe
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+  apiVersion: '2025-01-27.acacia',
+});
+
+// Stripe price IDs (you'll need to create these in Stripe Dashboard)
+const STRIPE_PRICES = {
+  free: 'price_free_trial', // Will create in Stripe
+  basic: 'price_basic_monthly',
+  pro: 'price_pro_monthly',
+} as const;
 
 // Apply auth middleware to all routes
 billingRoutes.use('*', authMiddleware);
@@ -12,12 +41,8 @@ billingRoutes.use('*', authMiddleware);
 billingRoutes.get('/subscription', async (c) => {
   const user = c.get('user');
 
-  // TODO: Implement getting subscription
-  // - Fetch from database
-  // - Include plan details, usage, limits
-
+  // TODO: Fetch from database
   return c.json({
-    message: 'Subscription details not yet implemented',
     userId: user.userId,
     subscription: null,
   });
@@ -25,25 +50,156 @@ billingRoutes.get('/subscription', async (c) => {
 
 // POST /api/billing/checkout - Create checkout session
 const checkoutSchema = z.object({
-  plan: z.enum(['pro', 'enterprise']),
-  successUrl: z.string().url(),
-  cancelUrl: z.string().url(),
+  plan: z.enum(['free', 'basic', 'pro']),
+  framework: z.string(),
+  model: z.string(),
+  channel: z.string(),
+  successUrl: z.string().url().optional(),
+  cancelUrl: z.string().url().optional(),
 });
 
 billingRoutes.post('/checkout', zValidator('json', checkoutSchema), async (c) => {
   const user = c.get('user');
-  const { plan, successUrl, cancelUrl } = c.req.valid('json');
+  const { plan, framework, model, channel, successUrl, cancelUrl } = c.req.valid('json');
 
-  // TODO: Implement checkout session creation
-  // - Create Stripe checkout session
-  // - Set up success/cancel handlers
-  // - Return checkout URL
+  try {
+    // Get or create Stripe customer
+    let customerId = user.metadata?.stripeCustomerId;
 
-  return c.json({
-    message: 'Checkout session not yet implemented',
-    userId: user.userId,
-    plan,
-  });
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        metadata: {
+          userId: user.userId,
+          framework,
+          model,
+          channel,
+          plan,
+        },
+      });
+      customerId = customer.id;
+    }
+
+    // Determine price
+    let priceId: string;
+    let amount = 0;
+
+    switch (plan) {
+      case 'free':
+        // Free trial - no charge, but we'll use a placeholder
+        amount = 0;
+        priceId = 'price_free_trial';
+        break;
+      case 'basic':
+        amount = 500; // $5.00
+        priceId = 'price_basic_monthly';
+        break;
+      case 'pro':
+        amount = 1500; // $15.00
+        priceId = 'price_pro_monthly';
+        break;
+    }
+
+    // Create checkout session
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
+      customer: customerId,
+      mode: 'payment',
+      success_url: successUrl || `${process.env.PUBLIC_URL || 'http://localhost:5173'}/checkout/success`,
+      cancel_url: cancelUrl || `${process.env.PUBLIC_URL || 'http://localhost:5173'}/checkout`,
+      metadata: {
+        userId: user.userId,
+        plan,
+        framework,
+        model,
+        channel,
+      },
+    };
+
+    if (plan === 'free') {
+      // For free plan, skip Stripe and go directly to success
+      return c.json({
+        freeTrial: true,
+        redirectUrl: `/checkout/success?plan=${plan}&framework=${framework}&model=${model}&channel=${channel}`,
+      });
+    }
+
+    // Add line item for paid plans
+    sessionParams.line_items = [
+      {
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: `${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan`,
+            description: `${plan} monthly subscription - Miniclaw AI Assistant`,
+          },
+          unit_amount: amount,
+        },
+        quantity: 1,
+      },
+    ];
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
+
+    return c.json({
+      checkoutUrl: session.url,
+    });
+  } catch (error) {
+    console.error('Checkout error:', error);
+    return c.json({ error: 'Failed to create checkout session' }, 500);
+  }
+});
+
+// POST /api/billing/checkout-success - Process successful checkout
+const checkoutSuccessSchema = z.object({
+  sessionId: z.string().optional(),
+  plan: z.string().optional(),
+  framework: z.string().optional(),
+  model: z.string().optional(),
+  channel: z.string().optional(),
+});
+
+billingRoutes.post('/checkout-success', zValidator('json', checkoutSuccessSchema), async (c) => {
+  const user = c.get('user');
+  const { sessionId, plan, framework, model, channel } = c.req.valid('json');
+
+  try {
+    // Get selections from localStorage (or metadata)
+    const selectedFramework = framework || localStorage.getItem('wizard_framework') || 'nanobot';
+    const selectedModel = model || localStorage.getItem('wizard_model') || 'minimax/minimax-m2.5';
+    const selectedChannel = channel || localStorage.getItem('wizard_channel') || 'telegram';
+    const selectedPlan = plan || 'basic';
+
+    // Allocate server from pool
+    const allocation = await allocator.allocate({
+      stack: selectedFramework as 'nanobot' | 'openclaw',
+      region: 'nyc1',
+      userId: user.userId,
+    });
+
+    if (!allocation.success) {
+      return c.json({
+        error: 'Failed to allocate server',
+        reason: allocation.reason,
+      }, 500);
+    }
+
+    // TODO: Store allocation in database
+    // TODO: Store subscription in database
+    // TODO: Send deployment confirmation
+
+    return c.json({
+      server: allocation.server,
+      subscription: {
+        plan: selectedPlan,
+        framework: selectedFramework,
+        model: selectedModel,
+        channel: selectedChannel,
+      },
+    });
+  } catch (error) {
+    console.error('Checkout success error:', error);
+    return c.json({ error: 'Failed to process checkout' }, 500);
+  }
 });
 
 // POST /api/billing/portal - Create customer portal session
