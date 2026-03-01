@@ -1,0 +1,65 @@
+services:
+  # API Service
+  - type: web
+    name: miniclaw-api
+    env: node
+    region: oregon
+    plan: starter
+    buildCommand: pnpm install --filter @miniclaw/api --filter @miniclaw/shared --filter @miniclaw/config
+    startCommand: cd apps/api && npx tsx src/index.ts
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: miniclaw-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: miniclaw-redis
+          property: port
+      - key: DATABASE_URL
+        sync: false
+      - key: DIGITALOCEAN_TOKEN
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRY
+        value: 7d
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: FRONTEND_URL
+        value: https://miniclaw.xyz
+      - key: API_URL
+        value: https://api.miniclaw.xyz
+      - key: POOL_TARGET_SIZE
+        value: 10
+      - key: POOL_MIN_SIZE
+        value: 4
+      - key: POOL_MAX_SIZE
+        value: 20
+      - key: POOL_HEALTH_CHECK_INTERVAL
+        value: 30000
+      - key: WORKER_CONCURRENT_JOBS
+        value: 5
+    healthCheckPath: /health
+
+  # Redis Service
+  - type: redis
+    name: miniclaw-redis
+    region: oregon
+    plan: starter
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: [] # Only allow internal connections
