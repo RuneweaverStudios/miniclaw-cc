@@ -20,8 +20,10 @@ export function AuthCallback() {
           const model = searchParams.get('model') || 'minimax/minimax-m2.5';
           const channel = searchParams.get('channel') || 'telegram';
 
-          // Sync user with backend and get JWT token
-          const response = await fetch('/api/auth/sync', {
+          // Sync user with backend and get JWT token (use API base URL when frontend is on different domain)
+          const apiBase = import.meta.env.VITE_API_URL || '';
+          const syncUrl = apiBase ? `${apiBase.replace(/\/$/, '')}/auth/sync` : '/api/auth/sync';
+          const response = await fetch(syncUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

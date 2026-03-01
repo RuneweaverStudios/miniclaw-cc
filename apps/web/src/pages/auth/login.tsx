@@ -31,7 +31,9 @@ export function Login() {
 
   const syncUserWithBackend = async (user: User) => {
     try {
-      const response = await fetch('/api/auth/sync', {
+      const apiBase = import.meta.env.VITE_API_URL || '';
+      const syncUrl = apiBase ? `${apiBase.replace(/\/$/, '')}/auth/sync` : '/api/auth/sync';
+      const response = await fetch(syncUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
