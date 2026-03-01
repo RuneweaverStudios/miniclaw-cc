@@ -290,7 +290,7 @@ authRoutes.post('/sync', async (c) => {
       userId: user.id,
       email: user.email,
       name: user.name || '',
-      plan: user.plan,
+      plan: user.plan || 'free',
     });
 
     return c.json({
@@ -304,11 +304,18 @@ authRoutes.post('/sync', async (c) => {
       },
       token,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Auth sync error:', error);
     const message = error instanceof Error ? error.message : 'Sync failed';
+    const detail = error && typeof (error as { detail?: string }).detail === 'string' ? (error as { detail: string }).detail : undefined;
+    const hint = /relation "users" does not exist|relation .* does not exist/i.test(message)
+      ? ' Run in apps/api: pnpm db:push (creates users table from schema).'
+      : '';
     return c.json({
-      error: { message },
+      error: {
+        message: message + hint,
+        ...(detail && { detail }),
+      },
     }, 500);
   }
 });

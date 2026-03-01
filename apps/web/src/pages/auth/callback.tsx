@@ -56,7 +56,15 @@ export function AuthCallback() {
             setStatus('success');
             setTimeout(() => navigate('/checkout', { replace: true }), 500);
           } else {
-            console.error('Failed to sync user with backend');
+            const raw = await response.text();
+            let errBody: Record<string, unknown> = {};
+            try {
+              errBody = raw ? JSON.parse(raw) : {};
+            } catch {
+              errBody = { raw };
+            }
+            const errMsg = (errBody?.error as { message?: string })?.message ?? (errBody?.message as string) ?? `HTTP ${response.status}`;
+            console.error('Failed to sync user with backend:', errMsg, raw || '(empty body)', errBody);
             setStatus('error');
             setTimeout(() => navigate('/', { replace: true }), 2000);
           }
