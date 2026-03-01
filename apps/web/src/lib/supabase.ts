@@ -1,28 +1,38 @@
 /**
  * Supabase Authentication Setup
  * Simple Google OAuth authentication for MiniClaw-CC
+ * When VITE_SUPABASE_URL is not set, a no-op client is used so the app still loads.
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-// TODO: Replace with your actual Supabase project URL
-// Get these from: https://supabase.com/dashboard/project/_/settings/api
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-if (!supabaseUrl) {
-  console.warn('VITE_SUPABASE_URL is not set. Please configure Supabase.');
+const noopUnsubscribe = { unsubscribe: () => {} };
+
+function createSupabaseClient(): SupabaseClient {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.warn('[Supabase] VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are not set. Google auth will be disabled.');
+    return {
+      auth: {
+        getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+        signInWithOAuth: () => Promise.resolve({ data: { provider: 'google', url: null }, error: new Error('Auth not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in the static site environment.') }),
+        onAuthStateChange: () => ({ data: { subscription: noopUnsubscribe } }),
+      },
+    } as unknown as SupabaseClient;
+  }
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      flowType: 'pkce',
+      detectSessionInUrl: true,
+      persistSession: true,
+    },
+  });
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    flowType: 'pkce', // Recommended for web apps
-    detectSessionInUrl: true,
-    persistSession: true,
-  },
-});
+export const supabase = createSupabaseClient();
 
-// Auth helper functions
 export const authConfig = {
   providers: [
     {
