@@ -1,10 +1,13 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
+import { desc, eq } from 'drizzle-orm';
 import { authMiddleware } from '../middleware/auth.js';
 import Stripe from 'stripe';
 import { allocator } from '../services/allocator.js';
 import { redis } from '../lib/redis.js';
+import { getDb } from '../lib/db/index.js';
+import { subscriptions } from '../db/schema.js';
 
 // Extend JWTPayload for user metadata
 declare module 'hono' {
@@ -41,11 +44,25 @@ billingRoutes.use('*', authMiddleware);
 // GET /api/billing/subscription - Get user's subscription
 billingRoutes.get('/subscription', async (c) => {
   const user = c.get('user');
-
-  // TODO: Fetch from database
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(subscriptions)
+    .where(eq(subscriptions.userId, user.userId))
+    .orderBy(desc(subscriptions.currentPeriodEnd))
+    .limit(1);
+  const sub = rows[0] ?? null;
   return c.json({
     userId: user.userId,
-    subscription: null,
+    subscription: sub
+      ? {
+          id: sub.id,
+          plan: sub.plan,
+          status: sub.status,
+          currentPeriodEnd: sub.currentPeriodEnd,
+          cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+        }
+      : null,
   });
 });
 
@@ -165,12 +182,17 @@ billingRoutes.post('/checkout-success', zValidator('json', checkoutSuccessSchema
     const cachedResult = await redis.get(idempotencyKey);
 
     if (cachedResult) {
-      console.log(`[Billing] ✓ CACHE HIT - Returning cached allocation for key: ${idempotencyKey}`);
-      const existingServer = JSON.parse(cachedResult);
-      return c.json({
-        server: existingServer,
-        subscription: null, // TODO: Fetch from database
-      });
+      try {
+        const existingServer = JSON.parse(cachedResult);
+        console.log(`[Billing] ✓ CACHE HIT - Returning cached allocation for key: ${idempotencyKey}`);
+        return c.json({
+          server: existingServer,
+          subscription: null, // TODO: Fetch from database
+        });
+      } catch (parseErr) {
+        console.warn(`[Billing] Invalid cache for ${idempotencyKey}, ignoring:`, parseErr);
+        await redis.del(idempotencyKey).catch(() => {});
+      }
     }
 
     console.log(`[Billing] Cache miss - Attempting to allocate new server...`);
@@ -185,10 +207,13 @@ billingRoutes.post('/checkout-success', zValidator('json', checkoutSuccessSchema
 
     if (!allocation.success) {
       console.error(`[Billing] ✗ Allocation failed: ${allocation.reason}`);
-      return c.json({
-        error: 'Failed to allocate server',
-        reason: allocation.reason,
-      }, 500);
+      return c.json(
+        {
+          error: allocation.reason ?? 'No servers available in standby pool',
+          reason: allocation.reason,
+        },
+        503
+      );
     }
 
     console.log(`[Billing] ✓ Allocation successful - droplet: ${allocation.server.dropletId}, ip: ${allocation.server.ipAddress}`);
@@ -232,8 +257,9 @@ billingRoutes.post('/checkout-success', zValidator('json', checkoutSuccessSchema
       },
     });
   } catch (error) {
-    console.error('Checkout success error:', error);
-    return c.json({ error: 'Failed to process checkout' }, 500);
+    const message = error instanceof Error ? error.message : 'Failed to process checkout';
+    console.error('[Billing] Checkout success error:', error);
+    return c.json({ error: message }, 500);
   }
 });
 
@@ -282,18 +308,54 @@ billingRoutes.get('/invoices/:invoiceId', async (c) => {
   });
 });
 
-// POST /api/billing/subscription/cancel - Cancel subscription
+// POST /api/billing/subscription/cancel - Cancel subscription at period end
 billingRoutes.post('/subscription/cancel', async (c) => {
   const user = c.get('user');
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(subscriptions)
+    .where(eq(subscriptions.userId, user.userId))
+    .orderBy(desc(subscriptions.currentPeriodEnd))
+    .limit(1);
 
-  // TODO: Implement subscription cancellation
-  // - Update in Stripe
-  // - Set cancel_at_period_end
-  // - Update database
+  if (rows.length === 0) {
+    return c.json({
+      message: 'No active subscription found',
+      cancelled: false,
+    }, 404);
+  }
+
+  const sub = rows[0];
+  if (sub.cancelAtPeriodEnd) {
+    return c.json({
+      message: 'Subscription is already set to cancel at period end',
+      cancelAtPeriodEnd: true,
+    });
+  }
+
+  if (sub.stripeSubscriptionId) {
+    try {
+      await stripe.subscriptions.update(sub.stripeSubscriptionId, {
+        cancel_at_period_end: true,
+      });
+    } catch (err) {
+      console.error('[Billing] Stripe cancel error:', err);
+      return c.json({
+        error: { message: 'Failed to update subscription in Stripe' },
+      }, 500);
+    }
+  }
+
+  await db
+    .update(subscriptions)
+    .set({ cancelAtPeriodEnd: true })
+    .where(eq(subscriptions.id, sub.id));
 
   return c.json({
-    message: 'Subscription cancellation not yet implemented',
-    userId: user.userId,
+    message: 'Subscription will cancel at the end of the current period',
+    cancelAtPeriodEnd: true,
+    currentPeriodEnd: sub.currentPeriodEnd,
   });
 });
 

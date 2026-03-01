@@ -1,11 +1,25 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { getDb } from '../lib/db/index.js';
 import { users, userServers } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import * as auth from '../services/auth.js';
 import { SSHClient, createSSHConnection } from '../lib/ssh.js';
+
+/** Load SSH private key from env (SSH_PRIVATE_KEY or SSH_PRIVATE_KEY_PATH). */
+function getSSHPrivateKey(): string | undefined {
+  if (process.env.SSH_PRIVATE_KEY) return process.env.SSH_PRIVATE_KEY;
+  if (process.env.SSH_PRIVATE_KEY_PATH) {
+    try {
+      return readFileSync(process.env.SSH_PRIVATE_KEY_PATH, 'utf8');
+    } catch (e) {
+      console.error('[SSH] Failed to read SSH_PRIVATE_KEY_PATH:', e);
+    }
+  }
+  return undefined;
+}
 
 const allocateRoutes = new Hono();
 
@@ -767,8 +781,8 @@ allocateRoutes.get('/:id/configure-telegram/stream', authMiddleware, async (c) =
           return;
         }
 
-        // Check if we're in simulation mode
-        const hasSSHKey = process.env.SSH_PRIVATE_KEY || process.env.SSH_PRIVATE_KEY_PATH;
+        // Check if we're in simulation mode (need key available for real SSH)
+        const hasSSHKey = !!getSSHPrivateKey();
         const isSimulation = !hasSSHKey;
 
         let dropletConfigured = false;
@@ -787,10 +801,11 @@ allocateRoutes.get('/:id/configure-telegram/stream', authMiddleware, async (c) =
 
             await log(`Connecting to droplet ${server.ipAddress}...`, 'info');
 
-            // Pre-flight check: Test if SSH port is open with retries
-            await log('Testing SSH connectivity (may take up to 2 minutes)...', 'info');
+            // Pre-flight: SSH port is already pretested by the health worker for pool servers.
+            // Use fewer retries when server was healthy at allocation; full retries as safety net otherwise.
+            const maxRetries = server.healthStatus === 'healthy' ? 3 : 12;
+            await log(`Testing SSH connectivity (pool servers are pretested; up to ${maxRetries} attempts)...`, 'info');
             let sshPortOpen = false;
-            const maxRetries = 12; // 12 retries * 5s = 60s max wait
             for (let attempt = 1; attempt <= maxRetries; attempt++) {
               try {
                 const { default: net } = await import('net');
@@ -821,6 +836,7 @@ allocateRoutes.get('/:id/configure-telegram/stream', authMiddleware, async (c) =
                   await log('Droplet may still be booting. Continuing with connection attempt...', 'warning');
                 } else {
                   await log(`SSH port not ready (attempt ${attempt}/${maxRetries}), retrying in 5s...`, 'info');
+                  await new Promise((r) => setTimeout(r, 5000));
                 }
               }
             }
@@ -839,11 +855,12 @@ allocateRoutes.get('/:id/configure-telegram/stream', authMiddleware, async (c) =
               try {
                 await log(`SSH connection attempt ${attempt}/${maxConnectionRetries}...`, 'info');
 
+                const privateKey = getSSHPrivateKey();
                 const sshPromise = createSSHConnection({
                   host: server.ipAddress,
                   port: server.sshPort || 22,
                   username: 'root',
-                  privateKey: process.env.SSH_PRIVATE_KEY,
+                  privateKey: privateKey ?? undefined,
                   readyTimeout: baseTimeout,
                 });
 
@@ -860,7 +877,10 @@ allocateRoutes.get('/:id/configure-telegram/stream', authMiddleware, async (c) =
               } catch (err) {
                 lastError = err instanceof Error ? err : new Error(String(err));
                 await log(`Connection attempt ${attempt} failed: ${lastError.message}`, 'warning');
-
+                const isAuthFailure = /authentication|auth failed|permission denied/i.test(lastError.message);
+                if (isAuthFailure) {
+                  await log('Tip: Use the same SSH key that is registered in DigitalOcean (e.g. ghost-m4-mac) and set SSH_PRIVATE_KEY or SSH_PRIVATE_KEY_PATH.', 'warning');
+                }
                 if (attempt < maxConnectionRetries) {
                   const backoffTime = 5000 * attempt; // 5s, 10s, 15s...
                   await log(`Waiting ${backoffTime / 1000}s before retry...`, 'info');
@@ -870,7 +890,10 @@ allocateRoutes.get('/:id/configure-telegram/stream', authMiddleware, async (c) =
             }
 
             if (!ssh) {
-              throw new Error(`Failed to connect after ${maxConnectionRetries} attempts. Last error: ${lastError?.message || 'Unknown error'}`);
+              const authHint = lastError?.message && /authentication|auth failed|permission denied/i.test(lastError.message)
+                ? ' The droplet rejected the SSH key. Ensure SSH_PRIVATE_KEY (or SSH_PRIVATE_KEY_PATH) is the private key for the same key added to pool droplets in DigitalOcean (e.g. ghost-m4-mac).'
+                : '';
+              throw new Error(`Failed to connect after ${maxConnectionRetries} attempts. Last error: ${lastError?.message || 'Unknown error'}${authHint}`);
             }
 
             await log('SSH connection established', 'success');

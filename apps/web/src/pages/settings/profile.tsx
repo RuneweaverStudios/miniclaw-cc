@@ -1,20 +1,49 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { authApi } from '@/lib/api';
-import { ArrowLeft, Save, User, Mail, Key } from 'lucide-react';
+import { authApi, api, billingApi } from '@/lib/api';
+import { ArrowLeft, Save, User, Mail, Key, CreditCard } from 'lucide-react';
 
 export function ProfileSettings() {
   const queryClient = useQueryClient();
-  const { data: user } = useQuery({
+  const { data: authData, error: userError, isError: isUserError } = useQuery({
     queryKey: ['user'],
     queryFn: authApi.me,
+    retry: false,
+  });
+  const user = (authData as { user?: { id: string; email: string; name: string } } | undefined)?.user;
+
+  const { data: subscriptionData } = useQuery({
+    queryKey: ['billing-subscription'],
+    queryFn: billingApi.getSubscription,
+    enabled: !!user,
+  });
+  const subscription = subscriptionData?.subscription ?? null;
+
+  const cancelSubscriptionMutation = useMutation({
+    mutationFn: () => billingApi.cancelSubscription(),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['billing-subscription'] });
+      alert(data?.message ?? 'Subscription set to cancel at period end.');
+    },
+    onError: (err: Error) => {
+      alert(err.message || 'Failed to cancel subscription');
+    },
   });
 
   const [formData, setFormData] = useState({
-    name: user?.name || '',
-    email: user?.email || '',
+    name: '',
+    email: '',
   });
+
+  useEffect(() => {
+    if (user) {
+      setFormData({
+        name: user.name || '',
+        email: user.email || '',
+      });
+    }
+  }, [user]);
 
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
@@ -24,17 +53,8 @@ export function ProfileSettings() {
 
   const updateProfileMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      // API call to update profile
-      const response = await fetch('/api/user/profile', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
-        },
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) throw new Error('Failed to update profile');
-      return response.json();
+      const res = await api.patch<{ message: string }>('/user/profile', data);
+      return res;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['user'] });
@@ -44,19 +64,10 @@ export function ProfileSettings() {
 
   const changePasswordMutation = useMutation({
     mutationFn: async (data: typeof passwordData) => {
-      const response = await fetch('/api/user/password', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
-        },
-        body: JSON.stringify({
-          currentPassword: data.currentPassword,
-          newPassword: data.newPassword,
-        }),
+      await api.post<{ message: string }>('/user/password', {
+        currentPassword: data.currentPassword,
+        newPassword: data.newPassword,
       });
-      if (!response.ok) throw new Error('Failed to change password');
-      return response.json();
     },
     onSuccess: () => {
       setPasswordData({
@@ -81,6 +92,21 @@ export function ProfileSettings() {
     }
     changePasswordMutation.mutate(passwordData);
   };
+
+  if (isUserError) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-600 mb-2">
+            {userError?.message || 'Session expired or invalid. Please log in again.'}
+          </p>
+          <Link to="/login" className="text-indigo-600 hover:text-indigo-700 font-medium">
+            Go to Login
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -274,6 +300,65 @@ export function ProfileSettings() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+
+          {/* Subscription & credits */}
+          <div className="bg-white shadow rounded-lg">
+            <div className="px-4 py-5 sm:px-6">
+              <h3 className="text-lg leading-6 font-medium text-gray-900">
+                Subscription & credits
+              </h3>
+              <p className="mt-1 max-w-2xl text-sm text-gray-500">
+                Manage your plan and token credits. Top up in Billing when you need more credits.
+              </p>
+            </div>
+            <div className="border-t border-gray-200 px-4 py-5 sm:px-6 space-y-4">
+              {subscription ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <CreditCard className="h-5 w-5 text-gray-400 mr-3" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">
+                          {subscription.plan} — {subscription.status}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {subscription.cancelAtPeriodEnd
+                            ? `Cancels at end of period (${new Date(subscription.currentPeriodEnd).toLocaleDateString()})`
+                            : `Current period ends ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}`}
+                        </p>
+                      </div>
+                    </div>
+                    {!subscription.cancelAtPeriodEnd && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm('Cancel at the end of the current billing period? You will keep access until then.')) {
+                            cancelSubscriptionMutation.mutate();
+                          }
+                        }}
+                        disabled={cancelSubscriptionMutation.isPending}
+                        className="inline-flex items-center px-3 py-1.5 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {cancelSubscriptionMutation.isPending ? 'Cancelling…' : 'Unsubscribe'}
+                      </button>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-gray-500">
+                  No active subscription. You can subscribe when you deploy an assistant from the dashboard.
+                </p>
+              )}
+              <div>
+                <Link
+                  to="/settings/billing"
+                  className="text-sm text-indigo-600 hover:text-indigo-700"
+                >
+                  Billing & top up credits →
+                </Link>
+              </div>
             </div>
           </div>
         </div>

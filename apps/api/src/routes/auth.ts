@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { getDb } from '../lib/db/index.js';
@@ -20,8 +20,8 @@ const signUpSchema = z.object({
   stack: z.enum(['openclaw', 'nanobot']).optional(),
 });
 
-// GET /api/auth - Get current user
-authRoutes.get('/', async (c) => {
+// Shared handler for GET current user (used by both / and /me)
+async function getCurrentUser(c: Context) {
   const token = c.req.header('Authorization')?.replace('Bearer ', '');
 
   if (!token) {
@@ -64,7 +64,13 @@ authRoutes.get('/', async (c) => {
       message: 'Invalid token',
     }, 401);
   }
-});
+}
+
+// GET /api/auth - Get current user
+authRoutes.get('/', getCurrentUser);
+
+// GET /api/auth/me - Get current user (alias for frontend compatibility)
+authRoutes.get('/me', getCurrentUser);
 
 // POST /api/auth/signin - Sign in
 authRoutes.post('/signin', async (c) => {

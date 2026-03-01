@@ -228,7 +228,8 @@ export class Allocator {
   }
 
   /**
-   * Find available server in standby pool
+   * Find available server in standby pool.
+   * Prefers healthy (SSH + service verified); falls back to unknown so onboarding never blocks.
    */
   private async findAvailableServer(
     stack: StackType,
@@ -236,27 +237,29 @@ export class Allocator {
   ): Promise<PoolServerConfig | null> {
     const servers = await poolManager.getServers("standby");
 
-    // Filter by stack - only healthy servers should be allocated
-    const stackServers = servers.filter((s) => s.stack === stack && s.healthStatus === "healthy");
+    // Same stack only; exclude only unhealthy (degraded/unknown are allocatable so onboarding doesn't block)
+    const byStack = servers.filter((s) => s.stack === stack && s.healthStatus !== "unhealthy");
 
-    if (stackServers.length === 0) {
+    if (byStack.length === 0) {
       return null;
     }
 
-    // Prefer requested region
+    // Prefer healthy, then unknown (oldest first so SSH more likely ready)
+    const healthy = byStack.filter((s) => s.healthStatus === "healthy");
+    const candidates = healthy.length > 0 ? healthy : byStack;
+    const toTime = (s: PoolServerConfig) =>
+      s.stateChangedAt instanceof Date
+        ? s.stateChangedAt.getTime()
+        : new Date((s.stateChangedAt as string) || 0).getTime();
+    const sorted = [...candidates].sort((a, b) => toTime(a) - toTime(b));
+
+    // Prefer requested region if we have one there
     if (region) {
-      const regionalServer = stackServers.find((s) => s.region === region);
-      if (regionalServer) {
-        return regionalServer;
-      }
+      const regional = sorted.find((s) => s.region === region);
+      if (regional) return regional;
     }
 
-    // Return least recently allocated server
-    const sortedServers = [...stackServers].sort(
-      (a, b) => a.stateChangedAt.getTime() - b.stateChangedAt.getTime()
-    );
-
-    return sortedServers[0];
+    return sorted[0];
   }
 
   /**

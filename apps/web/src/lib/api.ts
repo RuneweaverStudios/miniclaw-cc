@@ -44,10 +44,10 @@ class ApiClient {
       });
 
       if (!response.ok) {
-        const error: ApiError = await response.json().catch(() => ({
-          message: 'An unknown error occurred',
-        }));
-        throw new Error(error.message || `HTTP ${response.status}`);
+        const body = await response.json().catch(() => ({}));
+        const message =
+          (body?.error?.message ?? body?.message) || `HTTP ${response.status}`;
+        throw new Error(message);
       }
 
       return await response.json();
@@ -220,6 +220,14 @@ export const usersApi = {
 };
 
 // Billing API
+export interface SubscriptionInfo {
+  id: string;
+  plan: string;
+  status: string;
+  currentPeriodEnd: string;
+  cancelAtPeriodEnd: boolean;
+}
+
 export const billingApi = {
   getUsage: (period?: string) =>
     api.get<BillingUsage>(`/billing/usage${period ? `?period=${period}` : ''}`),
@@ -227,5 +235,13 @@ export const billingApi = {
   getInvoices: () =>
     api.get<{ id: string; amount: number; date: string; status: string }[]>(
       '/billing/invoices'
+    ),
+
+  getSubscription: () =>
+    api.get<{ userId: string; subscription: SubscriptionInfo | null }>('/billing/subscription'),
+
+  cancelSubscription: () =>
+    api.post<{ message: string; cancelAtPeriodEnd?: boolean; currentPeriodEnd?: string }>(
+      '/billing/subscription/cancel'
     ),
 };

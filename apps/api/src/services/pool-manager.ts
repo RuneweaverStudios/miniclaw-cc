@@ -361,7 +361,10 @@ export class PoolManager {
     const now = Date.now();
 
     for (const server of servers) {
-      const timeSinceError = now - server.stateChangedAt.getTime();
+      const changedAt = server.stateChangedAt instanceof Date
+        ? server.stateChangedAt.getTime()
+        : new Date((server.stateChangedAt as string) || 0).getTime();
+      const timeSinceError = now - changedAt;
       const errorThreshold = 30 * 60 * 1000; // 30 minutes
 
       if (timeSinceError > errorThreshold) {

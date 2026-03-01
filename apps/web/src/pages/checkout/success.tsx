@@ -86,6 +86,7 @@ export function CheckoutSuccess() {
           }, 1500);
         } else {
           const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+          const errorMessage = typeof errorData?.error === 'string' ? errorData.error : errorData?.reason || 'Failed to process checkout';
           console.error('[CheckoutSuccess] ✗ API error:', errorData);
 
           // Check if we already have a deployed_server in localStorage (from successful first call)
@@ -101,7 +102,7 @@ export function CheckoutSuccess() {
           }
 
           // Only show error if we don't have a server already
-          setError(errorData.error || 'Failed to process checkout');
+          setError(errorMessage);
           setDeploying(false);
           localStorage.removeItem(processingKey); // Clear processing flag
 

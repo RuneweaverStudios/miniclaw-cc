@@ -2,24 +2,48 @@ import Redis from 'ioredis';
 
 let redisInstance: Redis | null = null;
 
+function getRedisConfig(): { host: string; port: number; password?: string } | { url: string } {
+  const url = process.env.REDIS_URL;
+  if (url) {
+    return { url };
+  }
+  const host = process.env.REDIS_HOST || 'localhost';
+  const port = Number.parseInt(process.env.REDIS_PORT || '6379', 10);
+  const password = process.env.REDIS_PASSWORD;
+  return { host, port, password };
+}
+
 export function getRedis(): Redis {
   if (!redisInstance) {
-    const host = process.env.REDIS_HOST || 'localhost';
-    const port = Number.parseInt(process.env.REDIS_PORT || '6379');
-    const password = process.env.REDIS_PASSWORD;
+    const config = getRedisConfig();
 
-    redisInstance = new Redis({
-      host,
-      port,
-      password,
-      maxRetriesPerRequest: 3,
-      retryStrategy(times) {
-        const delay = Math.min(times * 50, 2000);
-        return delay;
-      },
-    });
+    // Fail fast in production if Redis is still pointing at localhost (e.g. REDIS_HOST not set on Render)
+    if (process.env.NODE_ENV === 'production' && 'host' in config && (config.host === 'localhost' || config.host === '127.0.0.1')) {
+      const msg =
+        '[Redis] REDIS_HOST is localhost in production. Set REDIS_HOST and REDIS_PORT to your Redis service (e.g. miniclaw-redis internal host). See docs/DEPLOY_RENDER.md § 1b.';
+      console.error(msg);
+      throw new Error(msg);
+    }
 
-    redisInstance.on('error', (err) => {
+    redisInstance = 'url' in config
+      ? new Redis(config.url, {
+          maxRetriesPerRequest: 3,
+          retryStrategy(times) {
+            return Math.min(times * 50, 2000);
+          },
+        })
+      : new Redis({
+          host: config.host,
+          port: config.port,
+          password: config.password,
+          maxRetriesPerRequest: 3,
+          retryStrategy(times) {
+            const delay = Math.min(times * 50, 2000);
+            return delay;
+          },
+        });
+
+    redisInstance.on('error', (err: Error) => {
       console.error('Redis Client Error:', err);
     });
 

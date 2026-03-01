@@ -1,11 +1,18 @@
 /**
  * Health Check Service - Server health monitoring
+ *
+ * Uses a two-phase check:
+ * 1. SSH port pretest (TCP) - if not ready, return "unknown" and do not count as failure.
+ * 2. Full check (SSH + service + HTTP) - only run when SSH is reachable; failures count.
+ * Only servers that pass the full check are marked "healthy" and eligible for allocation.
  */
 
 import { NodeSSH } from "node-ssh";
 import type { StackType, HealthStatus, PoolServerConfig } from "@miniclaw/shared";
 import { redis } from "../lib/redis.js";
 import { poolManager } from "./pool-manager.js";
+
+const SSH_PRETEST_TIMEOUT_MS = 5000;
 
 export interface HealthCheckResult {
   healthy: boolean;
@@ -17,6 +24,7 @@ export interface HealthCheckResult {
 export interface HealthDetails {
   serviceRunning: boolean;
   httpHealthy: boolean;
+  sshReachable?: boolean;
   responseTime?: number;
   error?: string;
   cpuUsage?: number;
@@ -26,16 +34,47 @@ export interface HealthDetails {
 }
 
 /**
+ * Pretest SSH port with a quick TCP connect (used by worker before full check).
+ * Returns true only if the port is open within the timeout.
+ */
+export async function isSSHPortOpen(
+  host: string,
+  port: number,
+  timeoutMs: number = SSH_PRETEST_TIMEOUT_MS
+): Promise<boolean> {
+  const { default: net } = await import("net");
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    const timer = setTimeout(() => {
+      socket.destroy();
+      resolve(false);
+    }, timeoutMs);
+    socket.on("error", () => {
+      clearTimeout(timer);
+      resolve(false);
+    });
+    socket.connect({ host, port }, () => {
+      clearTimeout(timer);
+      socket.destroy();
+      resolve(true);
+    });
+  });
+}
+
+/**
  * Health Checker class
  */
 export class HealthChecker {
   private checkIntervals = new Map<number, NodeJS.Timeout>();
 
   /**
-   * Perform health check on a server
+   * Perform health check on a server.
+   * Phase 1: SSH port pretest (TCP). If not open, return "unknown" and do not count as failure.
+   * Phase 2: Full SSH + service + HTTP check. Only when this passes is the server "healthy".
    */
   async checkServer(server: PoolServerConfig): Promise<HealthCheckResult> {
     const { dropletId, ipAddress, stack } = server;
+    const sshPort = server.sshPort || 22;
 
     const result: HealthCheckResult = {
       healthy: false,
@@ -46,6 +85,15 @@ export class HealthChecker {
       },
       timestamp: new Date(),
     };
+
+    // Phase 1: SSH port pretest - worker verifies port is open before full check
+    const sshPortOpen = await isSSHPortOpen(ipAddress, sshPort, SSH_PRETEST_TIMEOUT_MS);
+    result.details.sshReachable = sshPortOpen;
+
+    if (!sshPortOpen) {
+      result.details.error = "SSH port not ready";
+      return result;
+    }
 
     // Load SSH key - support both direct key and path to key file
     let sshKey = process.env.SSH_PRIVATE_KEY;
@@ -160,14 +208,16 @@ export class HealthChecker {
     } else if (result.details.serviceRunning && !result.details.httpHealthy) {
       result.status = "degraded";
     } else {
-      result.status = "unhealthy";
+      // SSH was reachable but service/HTTP failed - still allocatable (configure flow can fix)
+      result.status = result.details.sshReachable ? "degraded" : "unhealthy";
     }
 
     return result;
   }
 
   /**
-   * Check server and update pool state
+   * Check server and update pool state.
+   * Persists health status to the pool server record so allocator only picks healthy (SSH-pretested) servers.
    */
   async checkAndUpdate(dropletId: number): Promise<void> {
     const server = await poolManager.getServer(dropletId);
@@ -179,14 +229,24 @@ export class HealthChecker {
 
     const result = await this.checkServer(server);
 
+    const logDetail = result.details.sshReachable === false
+      ? "SSH port not ready"
+      : `${result.details.responseTime || 0}ms`;
     console.log(
-      `[HealthChecker] Server ${dropletId}: ${result.status} (${result.details.responseTime || 0}ms)`
+      `[HealthChecker] Server ${dropletId}: ${result.status} (${logDetail})`
     );
 
-    // Update health status in Redis
+    // Update health status in Redis (for dashboards / getHealthStatus)
     await this.updateHealthStatus(dropletId, result);
 
-    // Handle unhealthy servers
+    // Sync health status to pool server record so allocator only uses healthy servers
+    try {
+      await poolManager.updateServerState(dropletId, server.state, result.status as HealthStatus);
+    } catch (err) {
+      console.error(`[HealthChecker] Failed to update server ${dropletId} health in pool:`, err);
+    }
+
+    // Only count failures when SSH was reachable but service/HTTP failed (not when SSH was not ready)
     if (result.status === "unhealthy") {
       await this.handleUnhealthyServer(server, result);
     }

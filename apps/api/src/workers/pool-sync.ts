@@ -90,7 +90,7 @@ async function syncPoolWithDigitalOcean(): Promise<void> {
           stack,
           stackVersion,
           state,
-          healthStatus: "pending",
+          healthStatus: "unknown",
           stateChangedAt: new Date(droplet.created_at),
           config: {
             monitoringEnabled: false,

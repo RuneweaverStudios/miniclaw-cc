@@ -308,6 +308,8 @@ export function DeployWizard() {
               if (data.success) {
                 setAllocation({ ...allocation!, telegramBotToken: botToken, ...data });
                 setTelegramConfigured(true);
+                if (data.configError) setConfigError(data.configError);
+                if (data.dropletConfigured === false && !data.configError) setConfigError('Bot token saved but instance configuration did not complete. Try reconnecting via SSH and check gateway logs.');
                 setConfiguring(false);
               }
             } catch (e) {
@@ -684,6 +686,9 @@ export function DeployWizard() {
                           Open Your Bot in Telegram
                         </a>
                       </div>
+                      <p className="mt-4 text-xs text-zinc-500">
+                        If the bot doesn&apos;t reply yet, open the bot in Telegram and send <strong>/start</strong>, then wait a few seconds. It may take a moment to connect.
+                      </p>
                     </div>
                   </div>
                 </div>

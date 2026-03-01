@@ -1,8 +1,76 @@
 import { Hono } from 'hono';
 import { getDb } from '../lib/db/index.js';
 import { userServers, allocations, poolServers } from '../db/schema.js';
+import { poolManager } from '../services/pool-manager.js';
+import { redis } from '../lib/redis.js';
 
 const app = new Hono();
+
+/**
+ * GET /api/admin/pool-state - Debug view of pool (what the allocator sees).
+ * Returns counts by state, healthStatus, allocatable per stack, and last replenish time.
+ */
+app.get('/pool-state', async (c) => {
+  try {
+    const servers = await poolManager.getServers();
+    const metrics = await poolManager.getMetrics();
+
+    const byState: Record<string, number> = {};
+    const byHealthStatus: Record<string, number> = {};
+    const standbyByStack: Record<string, { healthy: number; degraded: number; unknown: number; allocatable: number }> = {
+      nanobot: { healthy: 0, degraded: 0, unknown: 0, allocatable: 0 },
+      openclaw: { healthy: 0, degraded: 0, unknown: 0, allocatable: 0 },
+    };
+
+    for (const s of servers) {
+      byState[s.state] = (byState[s.state] || 0) + 1;
+      byHealthStatus[s.healthStatus || 'unknown'] = (byHealthStatus[s.healthStatus || 'unknown'] || 0) + 1;
+
+      if (s.state === 'standby' && (s.stack === 'nanobot' || s.stack === 'openclaw')) {
+        const bucket = standbyByStack[s.stack];
+        const status = s.healthStatus || 'unknown';
+        if (status === 'healthy') bucket.healthy++;
+        else if (status === 'degraded') bucket.degraded++;
+        else bucket.unknown++;
+        if (status !== 'unhealthy') bucket.allocatable++;
+      }
+    }
+
+    const lastReplenishRaw = await redis.get('pool:last-replenish');
+    const lastReplenishAt = lastReplenishRaw ? new Date(parseInt(lastReplenishRaw, 10)).toISOString() : null;
+
+    const summary = servers.slice(0, 50).map((s) => ({
+      dropletId: s.dropletId,
+      state: s.state,
+      healthStatus: s.healthStatus || 'unknown',
+      stack: s.stack,
+      ipAddress: s.ipAddress,
+    }));
+
+    return c.json({
+      ok: true,
+      metrics: {
+        totalServers: metrics.totalServers,
+        standbyServers: metrics.standbyServers,
+        allocatedServers: metrics.allocatedServers,
+        standbyByStack: metrics.standbyByStack,
+        poolHealth: metrics.poolHealth,
+      },
+      byState,
+      byHealthStatus,
+      standbyAllocatableByStack: standbyByStack,
+      lastReplenishAt,
+      summary,
+      hint: 'Allocator picks standby servers with stack match and healthStatus !== "unhealthy". Prefers healthy, then degraded/unknown.',
+    });
+  } catch (error) {
+    console.error('[Admin] pool-state error:', error);
+    return c.json(
+      { ok: false, error: error instanceof Error ? error.message : 'Failed to get pool state' },
+      500
+    );
+  }
+});
 
 app.post('/ready-pool', async (c) => {
   try {
