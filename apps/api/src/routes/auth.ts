@@ -237,20 +237,30 @@ authRoutes.post('/reset-password', async (c) => {
 // POST /api/auth/sync - Sync user from OAuth provider (Supabase)
 authRoutes.post('/sync', async (c) => {
   try {
-    const body = await c.req.json();
-    const { email, name, avatar, provider, providerId } = body;
+    const body = await c.req.json().catch(() => ({}));
+    const email = body.email && String(body.email).trim();
+    const name = body.name != null ? String(body.name).trim() : undefined;
+    const avatar = body.avatar != null ? String(body.avatar) : undefined;
+    const provider = body.provider != null ? String(body.provider) : undefined;
+    const providerId = body.providerId != null ? String(body.providerId) : undefined;
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return c.json({
+        error: { message: 'Valid email is required' },
+      }, 400);
+    }
 
     const db = getDb();
     const now = new Date();
+    const displayName = name || email.split('@')[0] || 'User';
 
-    // Use upsert to handle race conditions from double-invoked useEffect
     const result = await db.insert(users)
       .values({
         email,
-        name: name || email.split('@')[0],
-        avatar,
-        provider,
-        providerId,
+        name: displayName,
+        avatar: avatar || null,
+        provider: provider || null,
+        providerId: providerId || null,
         plan: 'free',
         planStatus: 'trial',
         status: 'active',
@@ -260,17 +270,22 @@ authRoutes.post('/sync', async (c) => {
         target: users.email,
         set: {
           lastLoginAt: now,
-          ...(avatar && { avatar: (avatar as any) }),
-          ...(provider && { provider: (provider as any) }),
-          ...(providerId && { providerId: (providerId as any) }),
-          name: name || email.split('@')[0], // Update name if provided
+          ...(avatar !== undefined && { avatar }),
+          ...(provider !== undefined && { provider }),
+          ...(providerId !== undefined && { providerId }),
+          name: displayName,
         },
       })
       .returning();
 
     const user = result[0];
+    if (!user) {
+      console.error('Auth sync: insert returned no user');
+      return c.json({
+        error: { message: 'Failed to create or update user' },
+      }, 500);
+    }
 
-    // Generate JWT token for our API
     const token = auth.generateToken({
       userId: user.id,
       email: user.email,
@@ -291,10 +306,9 @@ authRoutes.post('/sync', async (c) => {
     });
   } catch (error) {
     console.error('Auth sync error:', error);
+    const message = error instanceof Error ? error.message : 'Sync failed';
     return c.json({
-      error: {
-        message: error instanceof Error ? error.message : 'Sync failed',
-      },
+      error: { message },
     }, 500);
   }
 });

@@ -29,11 +29,26 @@ import adminReadyPoolRoutes from './routes/admin-ready-pool.js';
 
 const app = new Hono();
 
+// CORS: allow localhost (dev) and production frontend (FRONTEND_URL)
+const corsOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:3002',
+];
+const frontendUrl = process.env.FRONTEND_URL;
+if (frontendUrl) {
+  const url = frontendUrl.replace(/\/$/, '');
+  corsOrigins.push(url);
+  if (url.startsWith('https://www.')) corsOrigins.push(url.replace('https://www.', 'https://'));
+  else if (url.startsWith('https://')) corsOrigins.push(`https://www.${url.slice(8)}`);
+}
+
 // Global middleware
 app.use('*', logger());
 app.use('*', prettyJSON());
 app.use('*', cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002'],
+  origin: corsOrigins,
   credentials: true,
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
