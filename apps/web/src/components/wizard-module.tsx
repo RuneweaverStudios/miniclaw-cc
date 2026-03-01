@@ -127,9 +127,9 @@ const FEATURED_MODELS = [
     recommended: true,
     blurb: 'Best value for extended agent workloads',
     recommendedBlurb: 'Recommended for most users - great balance of cost and capability',
-    // OpenRouter base: ~$0.20/M in, ~$0.60/M out → 1.5X markup = $0.30/M, $0.90/M
-    input_per_million_cents: 20, // Base price (without 1.5X markup)
-    output_per_million_cents: 60, // Base price (without 1.5X markup)
+    // Live from OpenRouter API: $0.295/M in, $1.20/M out → 1.5X = $0.45/M, $1.80/M
+    input_per_million_cents: 30, // Base price (without 1.5X markup)
+    output_per_million_cents: 120, // Base price (without 1.5X markup)
   },
   {
     id: 'anthropic/claude-3.5-haiku',
@@ -137,9 +137,9 @@ const FEATURED_MODELS = [
     icon: 'claude' as const,
     tag: 'Fast',
     blurb: 'Lightning-fast for simple tasks',
-    // OpenRouter base: ~$0.025/M in, ~$0.125/M out via haiku → 1.5X = $0.038/M, $0.19/M
-    input_per_million_cents: 3, // Base price (via openrouter/anthropic/claude-3.5-haiku)
-    output_per_million_cents: 13, // Base price
+    // Live from OpenRouter API: $0.80/M in, $4.00/M out → 1.5X = $1.20/M, $6.00/M
+    input_per_million_cents: 80,
+    output_per_million_cents: 400,
   },
   {
     id: 'moonshotai/kimi-k2.5',
@@ -147,9 +147,9 @@ const FEATURED_MODELS = [
     icon: 'moonshot' as const,
     tag: 'Top Ranked',
     blurb: '#1 ranked on OpenRouter, excellent for long documents',
-    // OpenRouter: ~$0.30/M in, ~$1.50/M out → 1.5X = $0.45/M, $2.25/M
-    input_per_million_cents: 30,
-    output_per_million_cents: 150,
+    // Live from OpenRouter API: $0.45/M in, $2.20/M out → 1.5X = $0.68/M, $3.30/M
+    input_per_million_cents: 45,
+    output_per_million_cents: 220,
   },
   {
     id: 'qwen/qwen3.5-flash-02-23',
@@ -157,9 +157,9 @@ const FEATURED_MODELS = [
     icon: 'qwen' as const,
     tag: 'Ultra Fast',
     blurb: 'Incredibly fast, great for Chinese and English',
-    // OpenRouter: ~$0.10/M in, ~$0.30/M out → 1.5X = $0.15/M, $0.45/M
+    // Live from OpenRouter API: $0.10/M in, $0.40/M out → 1.5X = $0.15/M, $0.60/M
     input_per_million_cents: 10,
-    output_per_million_cents: 30,
+    output_per_million_cents: 40,
   },
   {
     id: 'anthropic/claude-sonnet-4',
@@ -167,9 +167,9 @@ const FEATURED_MODELS = [
     icon: 'claude' as const,
     tag: 'Balanced',
     blurb: 'Excellent at coding and complex tasks',
-    // OpenRouter base: ~$3/M in, ~$15/M out → 1.5X = $4.50/M, $22.50/M
-    input_per_million_cents: 300, // Base price
-    output_per_million_cents: 1500, // Base price
+    // Live from OpenRouter API: $3.00/M in, $15.00/M out → 1.5X = $4.50/M, $22.50/M
+    input_per_million_cents: 300,
+    output_per_million_cents: 1500,
   },
   {
     id: 'z-ai/glm-5',
@@ -177,9 +177,9 @@ const FEATURED_MODELS = [
     icon: 'glm' as const,
     tag: 'Chinese Powerhouse',
     blurb: 'Strong programming capabilities, cost-effective',
-    // OpenRouter: ~$0.50/M in, ~$1.70/M out → 1.5X = $0.75/M, $2.55/M
-    input_per_million_cents: 50,
-    output_per_million_cents: 170,
+    // Live from OpenRouter API: $0.95/M in, $2.55/M out → 1.5X = $1.43/M, $3.83/M
+    input_per_million_cents: 95,
+    output_per_million_cents: 255,
   },
   {
     id: 'openai/gpt-4o',
@@ -187,9 +187,9 @@ const FEATURED_MODELS = [
     icon: 'openai' as const,
     tag: 'Creative',
     blurb: 'Flagship with multimodal capabilities',
-    // OpenRouter base: $2.50/M in, $10/M out → 1.5X = $3.75/M, $15/M
-    input_per_million_cents: 250, // Base price
-    output_per_million_cents: 1000, // Base price
+    // Live from OpenRouter API: $2.50/M in, $10.00/M out → 1.5X = $3.75/M, $15.00/M
+    input_per_million_cents: 250,
+    output_per_million_cents: 1000,
   },
   {
     id: 'anthropic/claude-opus-4.5',
@@ -197,7 +197,7 @@ const FEATURED_MODELS = [
     icon: 'claude' as const,
     tag: 'Premium',
     blurb: 'Top-tier coding and reasoning',
-    // OpenRouter base: ~$5/M in, ~$25/M out → 1.5X = $7.50/M, $37.50/M
+    // Live from OpenRouter API: $5.00/M in, $25.00/M out → 1.5X = $7.50/M, $37.50/M
     input_per_million_cents: 500,
     output_per_million_cents: 2500,
   },
@@ -208,9 +208,9 @@ const FEATURED_MODELS = [
     tag: 'Experimental',
     experimental: true,
     blurb: 'Large open-source model, experimental',
-    // OpenRouter: ~$0.80/M in, ~$0.80/M out → 1.5X = $1.20/M, $1.20/M
-    input_per_million_cents: 80,
-    output_per_million_cents: 80,
+    // Live from OpenRouter API: $0.039/M in, $0.19/M out → 1.5X = $0.06/M, $0.29/M
+    input_per_million_cents: 4,
+    output_per_million_cents: 19,
   },
 ] as const;
 

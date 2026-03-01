@@ -179,85 +179,103 @@ async function configureOpenClaw(
 
   log(`Configuring model '${model}' and Telegram...`);
 
-  // Check if config.yaml exists (OpenClaw's preferred format)
-  log('Checking existing configuration...');
-  const yamlConfigExists = await ssh.fileExists('/root/.openclaw/config.yaml');
-  const jsonConfigExists = await ssh.fileExists('/root/.openclaw/openclaw.json');
+  // Parse model to extract provider (same logic as Nanobot)
+  let provider = 'openrouter';
+  let modelName = model;
 
-  if (yamlConfigExists) {
-    // Update YAML config
-    log('Updating existing YAML config...');
-    const yamlConfig = `
-gateway:
-  mode: local
-
-channels:
-  telegram:
-    enabled: true
-    botToken: "${botToken}"
-    dmPolicy: "pairing"
-`;
-
-    await ssh.writeFile('/root/.openclaw/config.yaml', yamlConfig.trim());
-    log('Updated config.yaml with Telegram', 'success');
-
-    // Set model via openclaw config command
-    try {
-      log(`Setting model: ${model}`);
-      await ssh.executeCommand(`openclaw config set model "${model}"`);
-      log(`Set model to: ${model}`, 'success');
-    } catch (err) {
-      log(`Could not set model via command: ${err}`, 'warning');
-    }
-  } else if (jsonConfigExists) {
-    // Update JSON config
-    log('Updating existing JSON config...');
-    const existingConfig = await ssh.readFile('/root/.openclaw/openclaw.json');
-    const config = JSON.parse(existingConfig);
-
-    // Update channels configuration
-    config.channels = config.channels || {};
-    config.channels.telegram = {
-      enabled: true,
-      botToken: botToken,
-      dmPolicy: 'pairing'
-    };
-
-    // Try to set model if there's a models section
-    if (config.models) {
-      config.models.default = model;
-    }
-
-    // Write updated config
-    await ssh.writeFile('/root/.openclaw/openclaw.json', JSON.stringify(config, null, 2));
-    log('Updated openclaw.json with Telegram', 'success');
-  } else {
-    // Create new YAML config (preferred format)
-    log('Creating new YAML config...');
-    const yamlConfig = `
-gateway:
-  mode: local
-
-channels:
-  telegram:
-    enabled: true
-    botToken: "${botToken}"
-    dmPolicy: "pairing"
-`;
-
-    await ssh.mkdir('/root/.openclaw', true);
-    await ssh.writeFile('/root/.openclaw/config.yaml', yamlConfig.trim());
-    log('Created new config.yaml with Telegram', 'success');
-
-    // Set model via command
-    try {
-      log(`Setting model: ${model}`);
-      await ssh.executeCommand(`openclaw config set model "${model}"`);
-      log(`Set model to: ${model}`, 'success');
-    } catch (err) {
-      log(`Could not set model via command: ${err}`, 'warning');
-    }
+  if (model.includes('/')) {
+    const parts = model.split('/');
+    provider = parts[0];
+    modelName = parts.slice(1).join('/');
   }
+
+  const providerMap: Record<string, string> = {
+    'openrouter': 'openrouter',
+    'anthropic': 'anthropic',
+    'openai': 'openai',
+    'minimax': 'minimax',
+    'deepseek': 'deepseek',
+    'groq': 'groq',
+    'gemini': 'gemini',
+  };
+
+  const openclawProvider = providerMap[provider] || 'openrouter';
+  log(`Provider: ${openclawProvider}, Model: ${modelName}`);
+
+  // Check if config file exists (OpenClaw supports JSON or YAML)
+  log('Checking existing configuration...');
+  const jsonConfigExists = await ssh.fileExists('/root/.openclaw/openclaw.json');
+  const yamlConfigExists = await ssh.fileExists('/root/.openclaw/config.yaml');
+
+  // Use JSON config for simplicity and consistency with Nanobot
+  const configPath = '/root/.openclaw/openclaw.json';
+  let config: any = {};
+
+  if (jsonConfigExists) {
+    try {
+      const existingConfig = await ssh.readFile(configPath);
+      config = JSON.parse(existingConfig);
+      log('Loaded existing JSON config');
+    } catch (err) {
+      log('Creating new config', 'warning');
+    }
+  } else if (yamlConfigExists) {
+    // If YAML exists, we'll convert to JSON
+    log('Found YAML config, will convert to JSON');
+  }
+
+  // Configure providers with API key
+  log(`Configuring ${openclawProvider} provider...`);
+  config.env = config.env || {};
+  config.providers = config.providers || {};
+
+  if (openclawProvider === 'openrouter') {
+    config.env.OPENROUTER_API_KEY = dropletOpenRouterKey || process.env.OPENROUTER_API_KEY || '';
+    config.providers.openrouter = {
+      apiKey: dropletOpenRouterKey || process.env.OPENROUTER_API_KEY || ''
+    };
+  } else if (openclawProvider === 'anthropic') {
+    config.env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+    config.providers.anthropic = {
+      apiKey: process.env.ANTHROPIC_API_KEY || ''
+    };
+  } else if (openclawProvider === 'openai') {
+    config.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+    config.providers.openai = {
+      apiKey: process.env.OPENAI_API_KEY || ''
+    };
+  }
+
+  // Configure agents with model - THIS IS THE FIX
+  // OpenClaw expects agents.defaults.model as a string, not an object
+  log(`Setting model: ${modelName}`);
+  config.agents = config.agents || {};
+  config.agents.defaults = {
+    model: modelName,
+    provider: openclawProvider,
+    maxTokens: 8192,
+    temperature: 0.1
+  };
+
+  // Configure Telegram channel
+  log('Configuring Telegram channel...');
+  config.channels = config.channels || {};
+  config.channels.telegram = {
+    enabled: true,
+    botToken: botToken,
+    allowFrom: [],
+    dmPolicy: 'pairing'
+  };
+
+  // Ensure gateway mode is set
+  config.gateway = config.gateway || {};
+  config.gateway.mode = 'local';
+
+  // Write config
+  log('Writing configuration file...');
+  await ssh.mkdir('/root/.openclaw', true);
+  await ssh.writeFile(configPath, JSON.stringify(config, null, 2));
+  log(`Config written with ${openclawProvider}/${modelName} and Telegram`, 'success');
 
   // Restart OpenClaw gateway with memory limit for 1GB droplets
   log('Restarting OpenClaw gateway (with memory limit for 1GB)...');
