@@ -61,10 +61,7 @@ export class HealthChecker {
     }
 
     if (!sshKey) {
-      // In development without SSH, mark as unknown rather than unhealthy
-      const isDevelopment = process.env.NODE_ENV !== "production";
       result.details.error = "SSH key not configured (set SSH_PRIVATE_KEY or SSH_PRIVATE_KEY_PATH)";
-      result.status = isDevelopment ? "unknown" : "unhealthy";
       return result;
     }
 

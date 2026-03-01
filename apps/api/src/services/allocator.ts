@@ -236,20 +236,10 @@ export class Allocator {
   ): Promise<PoolServerConfig | null> {
     const servers = await poolManager.getServers("standby");
 
-    // Filter by stack - prefer healthy servers, but allow degraded/unknown in development
-    const isDevelopment = !process.env.SSH_PRIVATE_KEY && !process.env.SSH_PRIVATE_KEY_PATH;
-    const stackServers = servers.filter((s) => {
-      if (s.stack !== stack) return false;
-      // In production, only allocate healthy servers
-      if (!isDevelopment) return s.healthStatus === "healthy";
-      // In development, allow healthy, degraded, or unknown (but not error)
-      return ["healthy", "degraded", "unknown"].includes(s.healthStatus);
-    });
+    // Filter by stack - only healthy servers should be allocated
+    const stackServers = servers.filter((s) => s.stack === stack && s.healthStatus === "healthy");
 
     if (stackServers.length === 0) {
-      if (isDevelopment) {
-        console.warn(`[Allocator] No ${stack} servers available in standby pool (dev mode: health check relaxed)`);
-      }
       return null;
     }
 
