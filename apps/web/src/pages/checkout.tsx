@@ -81,7 +81,7 @@ type Plan = 'nanobot' | 'openclaw';
 
 export function Checkout() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [_searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<Plan>('nanobot');
   const [showModelSelector, setShowModelSelector] = useState(false);

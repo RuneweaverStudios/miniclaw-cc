@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usersApi, type User } from '@/lib/api';
-import { ArrowLeft, Search, Shield, MoreVertical } from 'lucide-react';
+import { ArrowLeft, Search, MoreVertical } from 'lucide-react';
 
 export function UserManagement() {
   const queryClient = useQueryClient();

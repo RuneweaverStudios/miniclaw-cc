@@ -2,15 +2,16 @@ import Redis from 'ioredis';
 
 let redisInstance: Redis | null = null;
 
-function getRedisConfig(): { host: string; port: number; password?: string } | { url: string } {
+function getRedisConfig(): { host: string; port: number; password?: string; db?: number } | { url: string; db?: number } {
+  const db = process.env.REDIS_DB != null ? Number.parseInt(process.env.REDIS_DB, 10) : undefined;
   const url = process.env.REDIS_URL;
   if (url) {
-    return { url };
+    return { url, db };
   }
   const host = process.env.REDIS_HOST || 'localhost';
   const port = Number.parseInt(process.env.REDIS_PORT || '6379', 10);
   const password = process.env.REDIS_PASSWORD;
-  return { host, port, password };
+  return { host, port, password, db };
 }
 
 export function getRedis(): Redis {
@@ -25,22 +26,20 @@ export function getRedis(): Redis {
       throw new Error(msg);
     }
 
+    const commonOpts = {
+      maxRetriesPerRequest: 3,
+      retryStrategy(times: number) {
+        return Math.min(times * 50, 2000);
+      },
+      ...(config.db != null ? { db: config.db } : {}),
+    };
     redisInstance = 'url' in config
-      ? new Redis(config.url, {
-          maxRetriesPerRequest: 3,
-          retryStrategy(times) {
-            return Math.min(times * 50, 2000);
-          },
-        })
+      ? new Redis(config.url, commonOpts)
       : new Redis({
           host: config.host,
           port: config.port,
           password: config.password,
-          maxRetriesPerRequest: 3,
-          retryStrategy(times) {
-            const delay = Math.min(times * 50, 2000);
-            return delay;
-          },
+          ...commonOpts,
         });
 
     redisInstance.on('error', (err: Error) => {

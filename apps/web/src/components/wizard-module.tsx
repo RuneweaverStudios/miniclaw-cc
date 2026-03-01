@@ -1,5 +1,4 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 
 /** Official colorful Google G logo */
@@ -45,7 +44,7 @@ function ClaudeLogoIcon({ className }: { className?: string }) {
   );
 }
 
-function ModelIcon({ type }: { type: 'claude' | 'openai' | 'minimax' | 'kimi' }) {
+function ModelIcon({ type }: { type: 'claude' | 'openai' | 'minimax' | 'kimi' | 'glm' | 'qwen' | 'moonshot' }) {
   const className = 'flex h-5 w-5 shrink-0 items-center justify-center text-[inherit]';
   if (type === 'claude') {
     return <ClaudeLogoIcon className={className} />;
@@ -214,15 +213,15 @@ const FEATURED_MODELS = [
   },
 ] as const;
 
-function formatPricingLine(m: typeof FEATURED_MODELS[0]) {
+function formatPricingLine(m: (typeof FEATURED_MODELS)[number]) {
   const inCents = m.input_per_million_cents * 1.5;
   const outCents = m.output_per_million_cents * 1.5;
   return `$${(inCents / 100).toFixed(2)}/M in, $${(outCents / 100).toFixed(2)}/M out`;
 }
 
-type ModelOption = (typeof FEATURED_MODELS)[0] & { pricingLine: string };
+type ModelOption = (typeof FEATURED_MODELS)[number] & { pricingLine: string } & { recommended?: boolean; recommendedBlurb?: string };
 
-function sortByCostCheapestFirst(options: ModelOption[]): ModelOption[] {
+function sortByCostCheapestFirst<T extends { input_per_million_cents: number; output_per_million_cents: number }>(options: T[]): T[] {
   return [...options].sort(
     (a, b) =>
       a.input_per_million_cents + a.output_per_million_cents -
@@ -231,19 +230,15 @@ function sortByCostCheapestFirst(options: ModelOption[]): ModelOption[] {
 }
 
 export function WizardModule() {
-  const navigate = useNavigate();
   const [framework, setFramework] = useState<string>('nanobot');
   const [modelId, setModelId] = useState<string>(FEATURED_MODELS[0]?.id || '');
-  const [channelId, setChannelId] = useState<string>('telegram');
+  const [channelId, _setChannelId] = useState<string>('telegram');
   const [loaded, setLoaded] = useState(false);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [showPremiumWarning, setShowPremiumWarning] = useState(false);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
 
-  const modelOptions: ModelOption[] = FEATURED_MODELS.map((m) => ({
-    ...m,
-    pricingLine: formatPricingLine(m),
-  }));
+  const modelOptions = FEATURED_MODELS.map((m) => ({ ...m, pricingLine: formatPricingLine(m) })) as unknown as ModelOption[];
 
   const sortedModelOptions = useMemo(() => sortByCostCheapestFirst(modelOptions), [modelOptions]);
   const selectedModel = modelOptions.find((m) => m.id === modelId) || sortedModelOptions[0];
@@ -262,12 +257,8 @@ export function WizardModule() {
 
   useEffect(() => {
     // Check if user is already authenticated
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setLoaded(true);
-      } else {
-        setLoaded(true);
-      }
+    supabase.auth.getSession().then(({ data: { session: _s } }) => {
+      setLoaded(true);
     });
   }, []);
 
@@ -279,11 +270,8 @@ export function WizardModule() {
 
   const handleModel = (id: string) => {
     setModelId(id);
-    // Persist to localStorage so it survives to checkout
     localStorage.setItem('wizard_model', id);
-
-    // Check if this is a premium model
-    const model = FEATURED_MODELS.find(m => m.id === id);
+    const model = FEATURED_MODELS.find((m): m is (typeof FEATURED_MODELS)[number] => m.id === id);
     if (model) {
       const priceSum = model.input_per_million_cents + model.output_per_million_cents;
       const isPremium = priceSum >= 400; // Premium threshold
@@ -297,7 +285,7 @@ export function WizardModule() {
   };
 
   const handleGoogleSignIn = async () => {
-    const { data, error } = await supabase.auth.signInWithOAuth({
+    const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/auth/callback?framework=${framework}&model=${modelId}&channel=${channelId}`,
@@ -418,7 +406,7 @@ export function WizardModule() {
           </button>
           {modelDropdownOpen && (
             <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-[min(28rem,70vh)] overflow-auto rounded-xl border border-zinc-700 bg-zinc-900 shadow-xl">
-              {sortedModelOptions.map((m, idx) => {
+              {sortedModelOptions.map((m) => {
                 const selected = modelId === m.id;
                 const priceSum = m.input_per_million_cents + m.output_per_million_cents;
                 const tier = priceSum < 100 ? 'budget' : priceSum < 400 ? 'balanced' : 'premium';

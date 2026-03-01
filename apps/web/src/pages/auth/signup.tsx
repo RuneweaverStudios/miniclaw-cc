@@ -18,7 +18,7 @@ export function Signup() {
 
     // Handle OAuth redirect
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (_event, session) => {
         if (session) {
           // User just signed in, sync with our backend
           await syncUserWithBackend(session.user);
@@ -67,7 +67,7 @@ export function Signup() {
     setError('');
 
     try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
+      const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,

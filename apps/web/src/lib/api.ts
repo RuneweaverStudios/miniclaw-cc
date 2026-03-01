@@ -1,12 +1,6 @@
 // API client using fetch with proper typing
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
-interface ApiError {
-  message: string;
-  code?: string;
-  details?: unknown;
-}
-
 class ApiClient {
   private baseUrl: string;
   private defaultHeaders: Record<string, string>;

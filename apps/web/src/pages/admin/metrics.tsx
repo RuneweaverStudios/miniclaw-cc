@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, TrendingUp, Server, DollarSign, Clock } from 'lucide-react';
 
 export function Metrics() {

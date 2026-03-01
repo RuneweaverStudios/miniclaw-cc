@@ -29,9 +29,9 @@ export function DeployWizard() {
   const [allocation, setAllocation] = useState<DropletAllocation | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [copied, setCopied] = useState(false);
-  const [allocationError, setAllocationError] = useState('');
-  const [allocationTimeoutElapsed, setAllocationTimeoutElapsed] = useState(false);
+  const [_copied, setCopied] = useState(false);
+  const [_allocationError, setAllocationError] = useState('');
+  const [_allocationTimeoutElapsed, setAllocationTimeoutElapsed] = useState(false);
 
   // Telegram configuration states - must be at top level to avoid hooks error
   const [botToken, setBotToken] = useState('');
@@ -152,7 +152,7 @@ export function DeployWizard() {
           lastError = errorData.reason || errorData.error || 'Failed to allocate droplet';
 
           // Check if this is a lock acquisition error (retryable)
-          if (lastError.includes('Could not acquire allocation lock') && retryCount < maxRetries - 1) {
+          if (lastError !== null && lastError.includes('Could not acquire allocation lock') && retryCount < maxRetries - 1) {
             retryCount++;
             const delay = 1000 * retryCount; // 1s, 2s, 3s delays
             console.log(`Allocation attempt ${retryCount} failed, retrying in ${delay}ms...`);
@@ -160,7 +160,7 @@ export function DeployWizard() {
             continue;
           }
 
-          throw new Error(lastError);
+          throw new Error(lastError ?? 'Failed to allocate');
         }
 
         const data = await response.json();
@@ -308,7 +308,7 @@ export function DeployWizard() {
               if (data.success) {
                 setAllocation({ ...allocation!, telegramBotToken: botToken, ...data });
                 setTelegramConfigured(true);
-                if (data.configError) setConfigError(data.configError);
+                if (data.configError) setConfigError(data.configError ?? '');
                 if (data.dropletConfigured === false && !data.configError) setConfigError('Bot token saved but instance configuration did not complete. Try reconnecting via SSH and check gateway logs.');
                 setConfiguring(false);
               }

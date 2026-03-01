@@ -32,7 +32,7 @@ export function Dashboard() {
   const stats = [
     {
       name: 'Active Servers',
-      value: servers.filter((s) => s.status === 'running').length,
+      value: servers.filter((s: { status?: string }) => s.status === 'running').length,
       icon: Server,
       color: 'bg-blue-500',
       link: '/servers',
@@ -146,7 +146,7 @@ export function Dashboard() {
               </div>
             ) : (
               <ul className="divide-y divide-gray-200">
-                {recentServers.map((server) => (
+                {recentServers.map((server: { id: string; name?: string; status?: string; instanceType?: string; region?: string; createdAt?: string }) => (
                   <li key={server.id}>
                     <Link
                       to={`/servers/${server.id}`}
@@ -178,7 +178,7 @@ export function Dashboard() {
                           <div className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
                             <p>
                               Created{' '}
-                              {new Date(server.createdAt).toLocaleDateString()}
+                              {server.createdAt ? new Date(server.createdAt).toLocaleDateString() : '—'}
                             </p>
                           </div>
                         </div>
