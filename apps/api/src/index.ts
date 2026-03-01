@@ -54,6 +54,19 @@ app.use('*', cors({
   allowHeaders: ['Content-Type', 'Authorization'],
 }));
 
+// Ensure every error returns JSON (so clients never get empty 500 body)
+app.onError((err, c) => {
+  console.error('[API] Unhandled error:', err);
+  return c.json({
+    error: {
+      message: err.message || 'Internal server error',
+      ...(/relation .* does not exist/i.test(err.message) && {
+        hint: 'Run in apps/api: pnpm db:push to create tables.',
+      }),
+    },
+  }, 500);
+});
+
 // Health check
 app.get('/', (c) => {
   return c.json({
