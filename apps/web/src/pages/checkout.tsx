@@ -92,9 +92,12 @@ export function Checkout() {
   const [channel, setChannel] = useState('');
 
   useEffect(() => {
-    setFramework(localStorage.getItem('wizard_framework') || 'nanobot');
+    const savedFramework = localStorage.getItem('wizard_framework') || 'nanobot';
+    setFramework(savedFramework);
     setModel(localStorage.getItem('wizard_model') || 'minimax/minimax-m2.5');
     setChannel(localStorage.getItem('wizard_channel') || 'telegram');
+    // Sync selectedPlan with framework
+    setSelectedPlan(savedFramework as Plan);
   }, []);
 
   const modelDetails = MODEL_INFO[model] || {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle, AlertCircle } from 'lucide-react';
 
@@ -9,14 +9,50 @@ export function CheckoutSuccess() {
   const [error, setError] = useState('');
   const sessionId = searchParams.get('session_id');
 
+  // Use ref to track if we've already processed this checkout session
+  // This prevents double-calling the API due to React 18 StrictMode double-mount
+  const processedRef = useRef<string | null>(null);
+
   useEffect(() => {
     const processCheckout = async () => {
+      // Prevent duplicate processing of the same sessionId
+      // This handles React 18 StrictMode's double-mount behavior
+      const currentSessionId = sessionId || 'no-session';
+
+      // Check ref first (in-memory)
+      if (processedRef.current === currentSessionId) {
+        console.log('[CheckoutSuccess] Ref check: Already processed this session, skipping');
+        return;
+      }
+
+      // Also check localStorage as backup (persists across unmount/remount)
+      const processingKey = `processing_${currentSessionId}`;
+      const alreadyProcessing = localStorage.getItem(processingKey);
+      if (alreadyProcessing) {
+        console.log('[CheckoutSuccess] localStorage check: Already processing this session, skipping');
+        return;
+      }
+
+      // Mark as processing in both ref and localStorage
+      processedRef.current = currentSessionId;
+      localStorage.setItem(processingKey, Date.now().toString());
+
+      console.log('[CheckoutSuccess] First time processing this session, proceeding...');
+
       try {
         // Get wizard selections from localStorage
         const framework = localStorage.getItem('wizard_framework') || 'nanobot';
         const model = localStorage.getItem('wizard_model') || 'minimax/minimax-m2.5';
         const channel = localStorage.getItem('wizard_channel') || 'telegram';
         const plan = localStorage.getItem('selected_plan') || 'nanobot';
+
+        console.log('[CheckoutSuccess] Processing checkout with:', {
+          sessionId: currentSessionId,
+          framework,
+          model,
+          channel,
+          plan,
+        });
 
         // Verify checkout session and deploy server
         const response = await fetch('/api/billing/checkout-success', {
@@ -40,18 +76,38 @@ export function CheckoutSuccess() {
           localStorage.setItem('subscription', JSON.stringify(subscription));
           setDeploying(false);
 
+          // Clear processing flag
+          localStorage.removeItem(processingKey);
+
+          console.log('[CheckoutSuccess] ✓ Allocation successful, redirecting to /deploy in 1.5s');
           // Redirect to deploy wizard for bot pairing
           setTimeout(() => {
             navigate('/deploy');
           }, 1500);
         } else {
           const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-          console.error('Failed to process checkout:', errorData);
+          console.error('[CheckoutSuccess] ✗ API error:', errorData);
+
+          // Check if we already have a deployed_server in localStorage (from successful first call)
+          const existingServer = localStorage.getItem('deployed_server');
+          if (existingServer) {
+            console.log('[CheckoutSuccess] Found existing server in localStorage, ignoring error and redirecting');
+            setDeploying(false);
+            localStorage.removeItem(processingKey); // Clear processing flag
+            setTimeout(() => {
+              navigate('/deploy');
+            }, 1500);
+            return;
+          }
+
+          // Only show error if we don't have a server already
           setError(errorData.error || 'Failed to process checkout');
           setDeploying(false);
+          localStorage.removeItem(processingKey); // Clear processing flag
 
-          // Still redirect after showing error briefly
+          // Still redirect after showing error briefly (for debugging)
           setTimeout(() => {
+            console.log('[CheckoutSuccess] Error redirect to /deploy');
             navigate('/deploy');
           }, 3000);
         }
@@ -59,6 +115,7 @@ export function CheckoutSuccess() {
         console.error('Checkout processing error:', err);
         setError('Connection error. Please try again.');
         setDeploying(false);
+        localStorage.removeItem(processingKey); // Clear processing flag
 
         // Fallback: still try to continue to deploy
         setTimeout(() => {

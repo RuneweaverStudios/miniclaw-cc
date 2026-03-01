@@ -17,7 +17,8 @@
     "pool:reconcile": "tsx reconcile-pool.ts",
     "pool:prepare": "tsx prepare-for-prod.ts",
     "pool:deallocate": "tsx deallocate-server.ts",
-    "pool:clear-allocations": "tsx clear-all-allocations.ts"
+    "pool:clear-allocations": "tsx clear-all-allocations.ts",
+    "cleanup:testing": "tsx cleanup-after-testing.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.1",

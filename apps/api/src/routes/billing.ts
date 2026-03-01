@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { authMiddleware } from '../middleware/auth.js';
 import Stripe from 'stripe';
 import { allocator } from '../services/allocator.js';
+import { redis } from '../lib/redis.js';
 
 // Extend JWTPayload for user metadata
 declare module 'hono' {
@@ -153,6 +154,27 @@ billingRoutes.post('/checkout-success', zValidator('json', checkoutSuccessSchema
     const selectedChannel = channel || 'telegram';
     const selectedPlan = plan || 'nanobot';
 
+    // Idempotency check: If this sessionId was already processed, return cached result
+    // Use sessionId if available, otherwise use userId as fallback (for testing)
+    const idempotencyKey = sessionId
+      ? `checkout:session:${sessionId}`
+      : `checkout:user:${user.userId}:latest`;
+
+    console.log(`[Billing] Checkout request received - key: ${idempotencyKey}, framework: ${selectedFramework}, model: ${selectedModel}`);
+
+    const cachedResult = await redis.get(idempotencyKey);
+
+    if (cachedResult) {
+      console.log(`[Billing] ✓ CACHE HIT - Returning cached allocation for key: ${idempotencyKey}`);
+      const existingServer = JSON.parse(cachedResult);
+      return c.json({
+        server: existingServer,
+        subscription: null, // TODO: Fetch from database
+      });
+    }
+
+    console.log(`[Billing] Cache miss - Attempting to allocate new server...`);
+
     // Allocate server from pool
     const allocation = await allocator.allocate({
       stack: selectedFramework as 'nanobot' | 'openclaw',
@@ -162,11 +184,14 @@ billingRoutes.post('/checkout-success', zValidator('json', checkoutSuccessSchema
     });
 
     if (!allocation.success) {
+      console.error(`[Billing] ✗ Allocation failed: ${allocation.reason}`);
       return c.json({
         error: 'Failed to allocate server',
         reason: allocation.reason,
       }, 500);
     }
+
+    console.log(`[Billing] ✓ Allocation successful - droplet: ${allocation.server.dropletId}, ip: ${allocation.server.ipAddress}`);
 
     // TODO: Store allocation in database
     // TODO: Store subscription in database
@@ -191,6 +216,11 @@ billingRoutes.post('/checkout-success', zValidator('json', checkoutSuccessSchema
       model: selectedModel,
       channel: selectedChannel,
     };
+
+    // Cache the allocation result for idempotency (expires in 1 hour)
+    // Use same idempotencyKey as defined above (sessionId or userId-based)
+    await redis.setex(idempotencyKey, 3600, JSON.stringify(serverResponse));
+    console.log(`[Billing] ✓ Cached allocation for key: ${idempotencyKey} (expires in 1 hour)`);
 
     return c.json({
       server: serverResponse,

@@ -161,7 +161,12 @@ pnpm --filter @miniclaw/api pool:clear-allocations
 
 # Prepare for production (clear all test data)
 pnpm --filter @miniclaw/api pool:prepare
+
+# Complete cleanup after testing (clears everything + deallocates)
+pnpm cleanup:testing
 ```
+
+> **See [TESTINGTOOLS.md](./TESTINGTOOLS.md)** for comprehensive documentation of all testing tools and troubleshooting guides.
 
 ### Development
 
@@ -449,6 +454,18 @@ docker-compose up -d
 - [ ] Pool initialized with servers
 - [ ] Health monitor started
 
+### Pre-Production Cleanup
+```bash
+# Clear all test data before deploying
+pnpm cleanup:testing
+```
+
+**📖 See [TESTINGTOOLS.md](./TESTINGTOOLS.md)** for:
+- Complete documentation of all testing tools
+- Troubleshooting guides
+- Testing workflows
+- Database schema and Redis keys reference
+
 ## 📝 License
 
 MIT
@@ -456,4 +473,5 @@ MIT
 ## 🆘 Support
 
 - **GitHub Issues**: https://github.com/yourusername/miniclaw-cc/issues
-- **Documentation**: See `apps/api/README-SCRIPTS.md` for script reference
+- **Testing Tools**: See [TESTINGTOOLS.md](./TESTINGTOOLS.md) for development and testing utilities
+- **API Documentation**: See `apps/api/README-SCRIPTS.md` for script reference

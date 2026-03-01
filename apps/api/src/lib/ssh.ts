@@ -6,6 +6,7 @@ export interface SSHConfig {
   username?: string;
   privateKey?: string;
   password?: string;
+  readyTimeout?: number; // Connection timeout in milliseconds
 }
 
 export class SSHClient {
@@ -36,7 +37,7 @@ export class SSHClient {
       username: config.username || 'root',
       privateKey,
       password: config.password,
-      readyTimeout: 30000,
+      readyTimeout: config.readyTimeout || 30000,
     });
   }
 

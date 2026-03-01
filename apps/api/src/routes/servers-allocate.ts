@@ -769,13 +769,91 @@ allocateRoutes.get('/:id/configure-telegram/stream', authMiddleware, async (c) =
 
             await log(`Connecting to droplet ${server.ipAddress}...`, 'info');
 
-            // Create SSH connection
-            const ssh = await createSSHConnection({
-              host: server.ipAddress,
-              port: server.sshPort || 22,
-              username: 'root',
-              privateKey: process.env.SSH_PRIVATE_KEY,
-            });
+            // Pre-flight check: Test if SSH port is open with retries
+            await log('Testing SSH connectivity (may take up to 2 minutes)...', 'info');
+            let sshPortOpen = false;
+            const maxRetries = 12; // 12 retries * 5s = 60s max wait
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+              try {
+                const { default: net } = await import('net');
+                await new Promise<void>((resolve, reject) => {
+                  const socket = new net.Socket();
+                  const timeout = setTimeout(() => {
+                    socket.destroy();
+                    reject(new Error('SSH port check timeout'));
+                  }, 5000);
+
+                  socket.connect({ host: server.ipAddress!, port: server.sshPort || 22 }, () => {
+                    clearTimeout(timeout);
+                    sshPortOpen = true;
+                    socket.destroy();
+                    resolve();
+                  });
+
+                  socket.on('error', (err) => {
+                    clearTimeout(timeout);
+                    reject(err);
+                  });
+                });
+                await log(`SSH port is open (attempt ${attempt}/${maxRetries})`, 'success');
+                break; // Success!
+              } catch (err) {
+                if (attempt === maxRetries) {
+                  await log(`SSH port not reachable after ${maxRetries} attempts: ${err instanceof Error ? err.message : 'Unknown error'}`, 'warning');
+                  await log('Droplet may still be booting. Continuing with connection attempt...', 'warning');
+                } else {
+                  await log(`SSH port not ready (attempt ${attempt}/${maxRetries}), retrying in 5s...`, 'info');
+                }
+              }
+            }
+
+            // Create SSH connection with timeout and retry logic
+            // OpenClaw takes longer to boot (Node.js) so we use longer timeouts and retries
+            const maxConnectionRetries = stack === 'openclaw' ? 6 : 2;
+            const baseTimeout = stack === 'openclaw' ? 30000 : 15000;
+
+            await log(`Connection timeout: ${baseTimeout / 1000}s per attempt, max retries: ${maxConnectionRetries}`, 'info');
+
+            let ssh: SSHClient | null = null;
+            let lastError: Error | null = null;
+
+            for (let attempt = 1; attempt <= maxConnectionRetries; attempt++) {
+              try {
+                await log(`SSH connection attempt ${attempt}/${maxConnectionRetries}...`, 'info');
+
+                const sshPromise = createSSHConnection({
+                  host: server.ipAddress,
+                  port: server.sshPort || 22,
+                  username: 'root',
+                  privateKey: process.env.SSH_PRIVATE_KEY,
+                  readyTimeout: baseTimeout,
+                });
+
+                // Add timeout wrapper
+                const timeoutPromise = new Promise<never>((_, reject) => {
+                  setTimeout(() => {
+                    reject(new Error(`Connection timeout after ${baseTimeout / 1000}s`));
+                  }, baseTimeout + 2000);
+                });
+
+                ssh = await Promise.race([sshPromise, timeoutPromise]);
+                await log(`SSH connection established on attempt ${attempt}`, 'success');
+                break; // Success!
+              } catch (err) {
+                lastError = err instanceof Error ? err : new Error(String(err));
+                await log(`Connection attempt ${attempt} failed: ${lastError.message}`, 'warning');
+
+                if (attempt < maxConnectionRetries) {
+                  const backoffTime = 5000 * attempt; // 5s, 10s, 15s...
+                  await log(`Waiting ${backoffTime / 1000}s before retry...`, 'info');
+                  await new Promise(resolve => setTimeout(resolve, backoffTime));
+                }
+              }
+            }
+
+            if (!ssh) {
+              throw new Error(`Failed to connect after ${maxConnectionRetries} attempts. Last error: ${lastError?.message || 'Unknown error'}`);
+            }
 
             await log('SSH connection established', 'success');
 
@@ -789,16 +867,16 @@ allocateRoutes.get('/:id/configure-telegram/stream', authMiddleware, async (c) =
 
             // Configure based on stack type
             if (stack === 'nanobot') {
-              await configureNanobot(ssh, botToken, model, dropletOpenRouterKey, log);
+              await configureNanobot(ssh!, botToken, model, dropletOpenRouterKey, log);
             } else if (stack === 'openclaw') {
-              await configureOpenClaw(ssh, botToken, model, dropletOpenRouterKey, log);
+              await configureOpenClaw(ssh!, botToken, model, dropletOpenRouterKey, log);
             }
 
             dropletConfigured = true;
             await log('Configuration completed successfully', 'success');
 
             // Disconnect SSH
-            await ssh.disconnect();
+            await ssh!.disconnect();
             await log('Disconnected from droplet', 'info');
           } catch (err) {
             configError = err instanceof Error ? err.message : 'Unknown configuration error';
