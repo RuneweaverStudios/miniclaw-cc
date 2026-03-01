@@ -30,5 +30,5 @@
 // export { Dialog } from './dialog';
 // export { Toast } from './toast';
 
-// Re-export everything for convenience
-export *;
+// No components yet; add exports above as you add components.
+export {};
