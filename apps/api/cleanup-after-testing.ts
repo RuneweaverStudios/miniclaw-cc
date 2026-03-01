@@ -270,6 +270,36 @@ async function main() {
   }
 
   // ========================================================================
+  // PART 5: REMOVE DEPRECATED SCRIPTS
+  // ========================================================================
+
+  console.log('\n🗑️  PART 5: REMOVE DEPRECATED SCRIPTS\n');
+
+  const fs = await import('fs');
+  const path = await import('path');
+
+  const deprecatedScripts = [
+    { name: 'clear-all-allocations.ts', reason: 'Functionality merged into cleanup-after-testing.ts' },
+  ];
+
+  for (const script of deprecatedScripts) {
+    const scriptPath = path.join(process.cwd(), script.name);
+    console.log(`[Checking] ${script.name}...`);
+
+    try {
+      if (fs.existsSync(scriptPath)) {
+        fs.unlinkSync(scriptPath);
+        console.log(`   ✅ Removed: ${script.name} (${script.reason})`);
+        totalChanges++;
+      } else {
+        console.log(`   ℹ️  Already removed: ${script.name}`);
+      }
+    } catch (error) {
+      console.error(`   ⚠️  Failed to remove ${script.name}:`, error);
+    }
+  }
+
+  // ========================================================================
   // SUMMARY
   // ========================================================================
 
