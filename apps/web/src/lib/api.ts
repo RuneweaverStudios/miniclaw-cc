@@ -1,5 +1,7 @@
-// API client using fetch with proper typing
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+// API client using fetch with proper typing (API routes are under /api on the server)
+const API_BASE_URL = import.meta.env.VITE_API_URL
+  ? `${String(import.meta.env.VITE_API_URL).replace(/\/$/, '')}/api`
+  : '/api';
 
 class ApiClient {
   private baseUrl: string;

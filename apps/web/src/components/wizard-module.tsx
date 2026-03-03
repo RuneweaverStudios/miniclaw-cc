@@ -285,10 +285,11 @@ export function WizardModule() {
   };
 
   const handleGoogleSignIn = async () => {
+    const origin = (import.meta.env.VITE_APP_URL || window.location.origin).replace(/\/$/, '');
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?framework=${framework}&model=${modelId}&channel=${channelId}`,
+        redirectTo: `${origin}/auth/callback?framework=${framework}&model=${modelId}&channel=${channelId}`,
         queryParams: {
           access_type: 'offline',
           prompt: 'consent',

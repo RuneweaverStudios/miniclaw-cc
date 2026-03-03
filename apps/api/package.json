@@ -11,6 +11,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
+    "db:clear-users": "tsx clear-users.ts",
+    "clear-allocations-and-jobs": "tsx clear-allocations-and-jobs.ts",
     "test:onboarding": "tsx test-onboarding-flow.ts",
     "pool:check": "tsx check-pool.ts",
     "pool:refill": "tsx pool-refill.ts",

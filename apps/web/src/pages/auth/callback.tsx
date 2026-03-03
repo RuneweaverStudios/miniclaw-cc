@@ -23,7 +23,7 @@ export function AuthCallback() {
 
           // Sync user with backend and get JWT token (use API base URL when frontend is on different domain)
           const apiBase = import.meta.env.VITE_API_URL || '';
-          const syncUrl = apiBase ? `${apiBase.replace(/\/$/, '')}/auth/sync` : '/api/auth/sync';
+          const syncUrl = apiBase ? `${apiBase.replace(/\/$/, '')}/api/auth/sync` : '/api/auth/sync';
           const response = await fetch(syncUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

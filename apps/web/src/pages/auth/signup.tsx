@@ -34,7 +34,7 @@ export function Signup() {
     try {
       // Sync user with MiniClaw backend
       const apiBase = import.meta.env.VITE_API_URL || '';
-      const syncUrl = apiBase ? `${apiBase.replace(/\/$/, '')}/auth/sync` : '/api/auth/sync';
+      const syncUrl = apiBase ? `${apiBase.replace(/\/$/, '')}/api/auth/sync` : '/api/auth/sync';
       const response = await fetch(syncUrl, {
         method: 'POST',
         headers: {
@@ -69,10 +69,11 @@ export function Signup() {
     setError('');
 
     try {
+      const origin = (import.meta.env.VITE_APP_URL || window.location.origin).replace(/\/$/, '');
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: `${origin}/auth/callback`,
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',

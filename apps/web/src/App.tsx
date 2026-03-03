@@ -133,6 +133,16 @@ export const appRouter = createBrowserRouter([
       </div>
     ),
   },
+  {
+    path: '*',
+    element: (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 px-4">
+        <h1 className="text-2xl font-semibold text-gray-900">Page not found</h1>
+        <p className="mt-2 text-gray-600">The page you’re looking for doesn’t exist.</p>
+        <a href="/" className="mt-6 text-indigo-600 hover:text-indigo-500 font-medium">Go home</a>
+      </div>
+    ),
+  },
 ]);
 
 export default function App() {

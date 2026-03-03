@@ -21,10 +21,10 @@ Use this checklist to get **miniclaw.xyz** (and **www.miniclaw.xyz**) live.
 | 2 | miniclaw-api → Environment | Set all **secret** vars: `DATABASE_URL`, `DIGITALOCEAN_TOKEN`, `OPENROUTER_API_KEY`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`. Keep `FRONTEND_URL=https://miniclaw.xyz` and `API_URL=https://api.miniclaw.xyz`. |
 | 3 | miniclaw-api → Custom Domains | Add **api.miniclaw.xyz**. In your DNS, add the CNAME/A record Render shows. |
 | 4 | Database | Run schema once against production DB: `cd apps/api && pnpm db:push` with `DATABASE_URL` set to your production Postgres (e.g. Supabase). This creates the `users` table and others. |
-| 5 | Render Static Site | **New** → **Static Site**; connect same repo; **Root Directory** = blank (repo root). **Build Command**: `pnpm install && pnpm --filter @miniclaw/web build`. **Publish Directory** = `apps/web/dist`. Add env: `VITE_API_URL=https://api.miniclaw.xyz`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`. |
+| 5 | Render Static Site | **New** → **Static Site**; connect same repo; **Root Directory** = blank (repo root). **Build Command**: `pnpm install && pnpm --filter @miniclaw/web build`. **Publish Directory** = `apps/web/dist`. Add env: `VITE_API_URL=https://api.miniclaw.xyz`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_APP_URL=https://www.miniclaw.xyz` (so OAuth redirects back to production, not localhost). |
 | 6 | Static Site → Custom Domains | Add **miniclaw.xyz** and **www.miniclaw.xyz**. DNS: point root (and www) to the Render static site host (e.g. CNAME **www** → `miniclaw-frontend.onrender.com`; use Render’s instructions for root apex if needed). |
 | 7 | Google OAuth | In Google Cloud Console → APIs & Services → Credentials → your OAuth client: **Authorized redirect URIs** = `https://<your-supabase-ref>.supabase.co/auth/v1/callback`; **Authorized JavaScript origins** = `https://miniclaw.xyz`, `https://www.miniclaw.xyz`, `http://localhost:3000` (and 5173 if you use it). |
-| 8 | Supabase | In Supabase → Authentication → URL Configuration: **Site URL** = `https://www.miniclaw.xyz` (or `https://miniclaw.xyz`); **Redirect URLs** include `https://www.miniclaw.xyz/**`, `https://miniclaw.xyz/**`. |
+| 8 | Supabase | In Supabase → Authentication → URL Configuration: **Site URL** = `https://www.miniclaw.xyz` (not localhost). **Redirect URLs**: add `https://www.miniclaw.xyz/**`, `https://miniclaw.xyz/**`; keep `http://localhost:3000/**` for dev. If **Site URL** is localhost, OAuth will redirect users to localhost after login. |
 
 After step 4, login and `/api/auth/sync` will work only if the `users` table exists. After steps 5–8, the site and Google login should work on miniclaw.xyz.
 
@@ -152,7 +152,7 @@ After the Blueprint is set up, **every push to the branch you connected** can tr
 - Set **env**: `VITE_API_URL=https://api.miniclaw.xyz` (or your API URL), plus `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` for auth.
 - Deploy the **publish directory** `apps/web/dist` to any static host; no changes to `render.yaml` required for the API.
 
-**Render Static Site (for miniclaw.xyz):** New → Static Site → connect repo. Leave **Root Directory** blank (repo root). **Build Command**: `pnpm install && pnpm --filter @miniclaw/web build`. **Publish Directory**: `apps/web/dist`. Environment: `VITE_API_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
+**Render Static Site (for miniclaw.xyz):** New → Static Site → connect repo. Leave **Root Directory** blank (repo root). **Build Command**: `pnpm install && pnpm --filter @miniclaw/web build`. **Publish Directory**: `apps/web/dist`. Environment: `VITE_API_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`. **Redirects/Rewrites (required for SPA):** Add a **Rewrite**: Source `/*` → Destination `/index.html` (so `/auth/callback`, `/dashboard`, etc. serve the app instead of 404). Optionally add Rewrite `/favicon.ico` → `/vite.svg` to avoid favicon 404.
 
 ---
 
@@ -166,6 +166,8 @@ After the Blueprint is set up, **every push to the branch you connected** can tr
 | **Redis ECONNREFUSED localhost:6379** | The service that is deploying has no Redis. Use the Blueprint-linked **miniclaw-api** (so REDIS_HOST/REDIS_PORT are set from miniclaw-redis), or on your API service add **REDIS_HOST** and **REDIS_PORT** (and **REDIS_PASSWORD** if needed) from your Redis service’s Internal connection info. See § 1b. |
 | 401/403 from API | Verify `JWT_SECRET`, `FRONTEND_URL`, and CORS/origin settings match your frontend. |
 | **Frontend: `vite: command not found` (exit 127)** | The frontend must be a **Static Site**, not a Web Service. Static Sites have no start command—Render builds and serves files. Create a **Static Site**, set Build Command and **Publish Directory** = `apps/web/dist`. Do not set a Start Command. |
+| **Login redirects to localhost:3000** | Supabase is using **Site URL** as the post-login redirect. In Supabase → **Authentication** → **URL Configuration**, set **Site URL** to `https://www.miniclaw.xyz` (not `http://localhost:3000`). Add **Redirect URLs**: `https://www.miniclaw.xyz/**`, `https://miniclaw.xyz/**`. Save and try again. |
+| **GET /auth/callback (or /dashboard, etc.) returns 404** | The static site must serve `index.html` for all SPA routes. In Render → **miniclaw-frontend** → **Redirects/Rewrites**, add a **Rewrite**: Source `/*`, Destination `/index.html`. Save. Then `/auth/callback`, `/dashboard`, and other client routes will load the app instead of 404. |
 
 ---
 
