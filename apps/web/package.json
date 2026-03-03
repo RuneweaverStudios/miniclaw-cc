@@ -10,6 +10,7 @@
     "build": "tsc && vite build",
     "build:analyze": "vite build --mode production",
     "preview": "vite preview",
+    "serve": "serve dist -p 10000",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },

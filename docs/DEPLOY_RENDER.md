@@ -11,6 +11,25 @@ The **web app** (Vite/React in `apps/web`) is not in this blueprint; deploy it s
 
 ---
 
+## Quick: Production on miniclaw.xyz
+
+Use this checklist to get **miniclaw.xyz** (and **www.miniclaw.xyz**) live.
+
+| Step | Where | What to do |
+|------|--------|------------|
+| 1 | Render Blueprint | Apply `render.yaml` so **miniclaw-api** and **miniclaw-redis** exist. |
+| 2 | miniclaw-api → Environment | Set all **secret** vars: `DATABASE_URL`, `DIGITALOCEAN_TOKEN`, `OPENROUTER_API_KEY`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`. Keep `FRONTEND_URL=https://miniclaw.xyz` and `API_URL=https://api.miniclaw.xyz`. |
+| 3 | miniclaw-api → Custom Domains | Add **api.miniclaw.xyz**. In your DNS, add the CNAME/A record Render shows. |
+| 4 | Database | Run schema once against production DB: `cd apps/api && pnpm db:push` with `DATABASE_URL` set to your production Postgres (e.g. Supabase). This creates the `users` table and others. |
+| 5 | Render Static Site | **New** → **Static Site**; connect same repo; **Root Directory** = blank (repo root). **Build Command**: `pnpm install && pnpm --filter @miniclaw/web build`. **Publish Directory** = `apps/web/dist`. Add env: `VITE_API_URL=https://api.miniclaw.xyz`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`. |
+| 6 | Static Site → Custom Domains | Add **miniclaw.xyz** and **www.miniclaw.xyz**. DNS: point root (and www) to the Render static site host (e.g. CNAME **www** → `miniclaw-frontend.onrender.com`; use Render’s instructions for root apex if needed). |
+| 7 | Google OAuth | In Google Cloud Console → APIs & Services → Credentials → your OAuth client: **Authorized redirect URIs** = `https://<your-supabase-ref>.supabase.co/auth/v1/callback`; **Authorized JavaScript origins** = `https://miniclaw.xyz`, `https://www.miniclaw.xyz`, `http://localhost:3000` (and 5173 if you use it). |
+| 8 | Supabase | In Supabase → Authentication → URL Configuration: **Site URL** = `https://www.miniclaw.xyz` (or `https://miniclaw.xyz`); **Redirect URLs** include `https://www.miniclaw.xyz/**`, `https://miniclaw.xyz/**`. |
+
+After step 4, login and `/api/auth/sync` will work only if the `users` table exists. After steps 5–8, the site and Google login should work on miniclaw.xyz.
+
+---
+
 ## 1. One-time setup (Blueprint from repo)
 
 1. **Render account**  
@@ -129,9 +148,11 @@ After the Blueprint is set up, **every push to the branch you connected** can tr
 
 ## 5. Frontend (web app)
 
-- Build: from repo root, e.g. `pnpm install && pnpm --filter web build` (adjust to your `apps/web` script).
-- Set **env**: `VITE_API_URL=https://api.miniclaw.xyz` (or your API URL) so the app calls the right API.
-- Deploy the `apps/web/dist` (or equivalent) output to any static host; no changes to `render.yaml` required for the API.
+- Build: from repo root, e.g. `pnpm install && pnpm --filter @miniclaw/web build`.
+- Set **env**: `VITE_API_URL=https://api.miniclaw.xyz` (or your API URL), plus `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` for auth.
+- Deploy the **publish directory** `apps/web/dist` to any static host; no changes to `render.yaml` required for the API.
+
+**Render Static Site (for miniclaw.xyz):** New → Static Site → connect repo. Leave **Root Directory** blank (repo root). **Build Command**: `pnpm install && pnpm --filter @miniclaw/web build`. **Publish Directory**: `apps/web/dist`. Environment: `VITE_API_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
 
 ---
 
@@ -144,6 +165,7 @@ After the Blueprint is set up, **every push to the branch you connected** can tr
 | Health check fails | Ensure `/health` returns 200 and Redis (and DB if used there) are reachable. |
 | **Redis ECONNREFUSED localhost:6379** | The service that is deploying has no Redis. Use the Blueprint-linked **miniclaw-api** (so REDIS_HOST/REDIS_PORT are set from miniclaw-redis), or on your API service add **REDIS_HOST** and **REDIS_PORT** (and **REDIS_PASSWORD** if needed) from your Redis service’s Internal connection info. See § 1b. |
 | 401/403 from API | Verify `JWT_SECRET`, `FRONTEND_URL`, and CORS/origin settings match your frontend. |
+| **Frontend: `vite: command not found` (exit 127)** | The frontend must be a **Static Site**, not a Web Service. Static Sites have no start command—Render builds and serves files. Create a **Static Site**, set Build Command and **Publish Directory** = `apps/web/dist`. Do not set a Start Command. |
 
 ---
 

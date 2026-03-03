@@ -1,32 +1,44 @@
 services:
+  # Frontend Service
+  - type: web
+    name: miniclaw-web
+    env: static
+    region: oregon
+    plan: starter
+    buildCommand: cd apps/web && pnpm install && pnpm build
+    staticPublishPath: apps/web/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        value: https://miniclaw-api.onrender.com
+
   # API Service
   - type: web
     name: miniclaw-api
     env: node
     region: oregon
     plan: starter
-    buildCommand: pnpm install --filter @miniclaw/api --filter @miniclaw/shared --filter @miniclaw/config
+    buildCommand: |
+      npm install -g pnpm
+      pnpm install --filter @miniclaw/api --filter @miniclaw/shared --filter @miniclaw/config
     startCommand: cd apps/api && npx tsx src/index.ts
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 4000
-      - key: REDIS_HOST
-        fromService:
-          type: redis
-          name: miniclaw-redis
-          property: host
-      - key: REDIS_PORT
-        fromService:
-          type: redis
-          name: miniclaw-redis
-          property: port
+      - key: REDIS_URL
+        value: redis://red-d6i7i9rh46gs73em43q0:6379
       - key: DATABASE_URL
         sync: false
       - key: DIGITALOCEAN_TOKEN
         sync: false
       - key: OPENROUTER_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
         sync: false
       - key: JWT_SECRET
         generateValue: true
@@ -41,9 +53,9 @@ services:
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
       - key: FRONTEND_URL
-        value: https://miniclaw.xyz
+        value: https://miniclaw-web.onrender.com
       - key: API_URL
-        value: https://api.miniclaw.xyz
+        value: https://miniclaw-api.onrender.com
       - key: POOL_TARGET_SIZE
         value: 10
       - key: POOL_MIN_SIZE
@@ -54,6 +66,8 @@ services:
         value: 30000
       - key: WORKER_CONCURRENT_JOBS
         value: 5
+      - key: CORS_ORIGIN
+        value: https://miniclaw-web.onrender.com
     healthCheckPath: /health
 
   # Redis Service

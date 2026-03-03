@@ -6,6 +6,7 @@ export function AuthCallback() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
+  const [errorMessage, setErrorMessage] = useState<string>('');
 
   useEffect(() => {
     const handleAuthCallback = async () => {
@@ -63,8 +64,16 @@ export function AuthCallback() {
             } catch {
               errBody = { raw };
             }
-            const errMsg = (errBody?.error as { message?: string })?.message ?? (errBody?.message as string) ?? `HTTP ${response.status}`;
+            let errMsg =
+              (errBody?.error as { message?: string })?.message ??
+              (errBody?.message as string) ??
+              `HTTP ${response.status}`;
+            if (response.status === 500 && !raw?.trim()) {
+              errMsg =
+                'Backend sync failed (no response). Start the API: run pnpm dev in apps/api. If the DB is missing tables, run pnpm db:push in apps/api.';
+            }
             console.error('Failed to sync user with backend:', errMsg, raw || '(empty body)', errBody);
+            setErrorMessage(errMsg);
             setStatus('error');
             setTimeout(() => navigate('/', { replace: true }), 2000);
           }
@@ -74,6 +83,7 @@ export function AuthCallback() {
         }
       } catch (error) {
         console.error('Auth callback error:', error);
+        setErrorMessage(error instanceof Error ? error.message : 'Something went wrong.');
         setStatus('error');
         setTimeout(() => navigate('/', { replace: true }), 2000);
       }
@@ -101,10 +111,13 @@ export function AuthCallback() {
         )}
 
         {status === 'error' && (
-          <div className="space-y-4">
+          <div className="space-y-4 max-w-md">
             <div className="text-5xl">❌</div>
             <p className="text-xl font-semibold text-red-600">Authentication Failed</p>
-            <p className="text-gray-600">Redirecting back to signup...</p>
+            {errorMessage && (
+              <p className="text-sm text-gray-600 whitespace-pre-wrap">{errorMessage}</p>
+            )}
+            <p className="text-gray-500">Redirecting back to signup...</p>
           </div>
         )}
       </div>

@@ -54,19 +54,6 @@ app.use('*', cors({
   allowHeaders: ['Content-Type', 'Authorization'],
 }));
 
-// Ensure every error returns JSON (so clients never get empty 500 body)
-app.onError((err, c) => {
-  console.error('[API] Unhandled error:', err);
-  return c.json({
-    error: {
-      message: err.message || 'Internal server error',
-      ...(/relation .* does not exist/i.test(err.message) && {
-        hint: 'Run in apps/api: pnpm db:push to create tables.',
-      }),
-    },
-  }, 500);
-});
-
 // Health check
 app.get('/', (c) => {
   return c.json({
@@ -110,19 +97,20 @@ app.route('/api/webhooks', webhookRoutes);
 app.route('/api/proxy', proxyRoutes);
 app.route('/api/admin', adminReadyPoolRoutes);
 
-// Error handling
+// Error handling: ensure every error returns JSON (no empty 500 body)
 app.onError((err, c) => {
-  console.error('Error:', err);
-
-  const status = err.status || 500;
+  console.error('[API] Unhandled error:', err);
+  const status = err.status ?? 500;
   const message = err.message || 'Internal Server Error';
-
   return c.json({
     error: {
       message,
       status,
-      timestamp: new Date().toISOString()
-    }
+      timestamp: new Date().toISOString(),
+      ...(/relation .* does not exist/i.test(message) && {
+        hint: 'Run in apps/api: pnpm db:push to create tables.',
+      }),
+    },
   }, status);
 });
 
@@ -147,24 +135,33 @@ async function main() {
   console.log('MiniClaw-CC API Starting...');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-  // Test Redis connection
+  // Test Redis connection (required in production; optional in dev so auth/sync works without Redis)
+  const isProduction = process.env.NODE_ENV === 'production';
+  let redisOk = false;
   try {
     await redis.ping();
+    redisOk = true;
     console.log('[Redis] Connected successfully');
   } catch (error) {
     console.error('[Redis] Connection failed:', error);
-    console.error('[Redis] Please ensure Redis is running on', process.env.REDIS_HOST || 'localhost:6379');
-    process.exit(1);
+    if (isProduction) {
+      console.error('[Redis] Production requires Redis. Set REDIS_HOST/REDIS_PORT (or REDIS_URL).');
+      process.exit(1);
+    }
+    console.warn('[Redis] Running without Redis (dev only). /health will show degraded; auth/sync still works.');
   }
 
-  // Start background workers
-  console.log('[Workers] Starting background workers...');
-  startReplenisher();
-  startHealthMonitor();
-  startReclaimer();
-  startInstallWorkers();
-  await startPoolSyncWorker();
-  console.log('[Workers] Background workers started');
+  if (redisOk) {
+    console.log('[Workers] Starting background workers...');
+    startReplenisher();
+    startHealthMonitor();
+    startReclaimer();
+    startInstallWorkers();
+    await startPoolSyncWorker();
+    console.log('[Workers] Background workers started');
+  } else {
+    console.log('[Workers] Skipped (no Redis).');
+  }
 
   // Start API server
   console.log(`[API] Starting server on port ${port}`);
